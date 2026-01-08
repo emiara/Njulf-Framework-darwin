@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>Njulf_Framework.Tests</RootNamespace>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="BepuPhysics" Version="2.5.0-beta.27" />
+        <PackageReference Include="BepuUtilities" Version="2.5.0-beta.27" />
+        <PackageReference Include="Silk.NET.Assimp" Version="2.22.0" />
+        <PackageReference Include="Silk.NET.Input" Version="2.22.0" />
+        <PackageReference Include="Silk.NET.Input.Extensions" Version="2.22.0" />
+        <PackageReference Include="Silk.NET.Maths" Version="2.22.0" />
+        <PackageReference Include="Silk.NET.Vulkan" Version="2.22.0" />
+        <PackageReference Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.22.0" />
+        <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.22.0" />
+        <PackageReference Include="Silk.NET.Windowing" Version="2.22.0" />
+    </ItemGroup>
+
+</Project>

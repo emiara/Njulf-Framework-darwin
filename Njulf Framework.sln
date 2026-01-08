@@ -2,6 +2,16 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Njulf Framework", "Njulf Framework\Njulf Framework.csproj", "{136EB1F6-3DFD-43CF-89FD-0C7D595C82FF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Njulf Framework.Core", "Njulf Framework.Core\Njulf Framework.Core.csproj", "{D3232D3E-CD26-45C9-9ECB-3851439C82DC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Njulf Framework.Rendering", "Njulf Framework.Rendering\Njulf Framework.Rendering.csproj", "{EFF03261-1766-4CD5-9B0A-97FD7F8B0D5D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Njulf Framework.Physics", "Njulf Framework.Physics\Njulf Framework.Physics.csproj", "{5812D36F-808F-4A69-901B-24E7F6A54931}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Njulf Framework.Input", "Njulf Framework.Input\Njulf Framework.Input.csproj", "{A6133536-796A-42CB-91BC-27B8160C5B58}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Njulf Framework.Tests", "Njulf Framework.Tests\Njulf Framework.Tests.csproj", "{5A17A2E1-5CA0-400B-9B36-210E48E73C58}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +22,25 @@ Global
 		{136EB1F6-3DFD-43CF-89FD-0C7D595C82FF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{136EB1F6-3DFD-43CF-89FD-0C7D595C82FF}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{136EB1F6-3DFD-43CF-89FD-0C7D595C82FF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D3232D3E-CD26-45C9-9ECB-3851439C82DC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D3232D3E-CD26-45C9-9ECB-3851439C82DC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D3232D3E-CD26-45C9-9ECB-3851439C82DC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D3232D3E-CD26-45C9-9ECB-3851439C82DC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EFF03261-1766-4CD5-9B0A-97FD7F8B0D5D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EFF03261-1766-4CD5-9B0A-97FD7F8B0D5D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EFF03261-1766-4CD5-9B0A-97FD7F8B0D5D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EFF03261-1766-4CD5-9B0A-97FD7F8B0D5D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5812D36F-808F-4A69-901B-24E7F6A54931}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5812D36F-808F-4A69-901B-24E7F6A54931}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5812D36F-808F-4A69-901B-24E7F6A54931}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5812D36F-808F-4A69-901B-24E7F6A54931}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A6133536-796A-42CB-91BC-27B8160C5B58}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A6133536-796A-42CB-91BC-27B8160C5B58}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A6133536-796A-42CB-91BC-27B8160C5B58}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A6133536-796A-42CB-91BC-27B8160C5B58}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5A17A2E1-5CA0-400B-9B36-210E48E73C58}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5A17A2E1-5CA0-400B-9B36-210E48E73C58}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5A17A2E1-5CA0-400B-9B36-210E48E73C58}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5A17A2E1-5CA0-400B-9B36-210E48E73C58}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
