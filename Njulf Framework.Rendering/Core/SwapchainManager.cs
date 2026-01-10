@@ -31,6 +31,7 @@ public class SwapchainManager : IDisposable
     public ImageView[] SwapchainImageViews => _swapchainImageViews;
     public Extent2D SwapchainExtent => _swapchainExtent;
     public Format SwapchainImageFormat => _swapchainImageFormat;
+    public uint SwapchainImageCount => (uint)_swapchainImages.Length;
 
     public SwapchainManager(
         Vk vk,

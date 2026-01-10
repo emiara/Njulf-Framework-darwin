@@ -9,26 +9,36 @@ public class SynchronizationManager : IDisposable
     private readonly Vk _vk;
     private readonly Device _device;
 
+    // Per-frame semaphores (for acquiring images)
     private Semaphore[] _imageAvailableSemaphores = null!;
+    
+    // Per-image semaphores (for presenting images)
     private Semaphore[] _renderFinishedSemaphores = null!;
+    
+    // Per-frame fences
     private Fence[] _inFlightFences = null!;
 
-    public Semaphore[] ImageAvailableSemaphores => _imageAvailableSemaphores;
-    public Semaphore[] RenderFinishedSemaphores => _renderFinishedSemaphores;
-    public Fence[] InFlightFences => _inFlightFences;
+    public Semaphore[] ImageAvailableSemaphores => _imageAvailableSemaphores;      // Size: MaxFramesInFlight
+    public Semaphore[] RenderFinishedSemaphores => _renderFinishedSemaphores;      // Size: SwapchainImageCount
+    public Fence[] InFlightFences => _inFlightFences;                              // Size: MaxFramesInFlight
 
-    public SynchronizationManager(Vk vk, Device device, uint maxFramesInFlight = 2)
+    public SynchronizationManager(Vk vk, Device device, uint swapchainImageCount, uint maxFramesInFlight = 2)
     {
         _vk = vk;
         _device = device;
 
-        CreateSemaphoresAndFences(maxFramesInFlight);
+        CreateSemaphoresAndFences(swapchainImageCount, maxFramesInFlight);
     }
 
-    private unsafe void CreateSemaphoresAndFences(uint maxFramesInFlight)
+    private unsafe void CreateSemaphoresAndFences(uint swapchainImageCount, uint maxFramesInFlight)
     {
+        // ImageAvailableSemaphores: per-frame (acquired in Acquire, consumed in Submit)
         _imageAvailableSemaphores = new Semaphore[maxFramesInFlight];
-        _renderFinishedSemaphores = new Semaphore[maxFramesInFlight];
+        
+        // RenderFinishedSemaphores: per-image (signaled in Submit, consumed in Present)
+        _renderFinishedSemaphores = new Semaphore[swapchainImageCount];
+        
+        // InFlightFences: per-frame
         _inFlightFences = new Fence[maxFramesInFlight];
 
         var semaphoreCreateInfo = new SemaphoreCreateInfo
@@ -42,23 +52,34 @@ public class SynchronizationManager : IDisposable
             Flags = FenceCreateFlags.SignaledBit // Start in signaled state
         };
 
+        // Create acquire semaphores (per-frame)
         for (uint i = 0; i < maxFramesInFlight; i++)
         {
             if (_vk.CreateSemaphore(_device, &semaphoreCreateInfo, null, out _imageAvailableSemaphores[i]) != Result.Success)
             {
                 throw new Exception($"Failed to create image available semaphore {i}");
             }
+        }
 
+        // Create render finished semaphores (per-image)
+        for (uint i = 0; i < swapchainImageCount; i++)
+        {
             if (_vk.CreateSemaphore(_device, &semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]) != Result.Success)
             {
                 throw new Exception($"Failed to create render finished semaphore {i}");
             }
+        }
 
+        // Create frame fences
+        for (uint i = 0; i < maxFramesInFlight; i++)
+        {
             if (_vk.CreateFence(_device, &fenceCreateInfo, null, out _inFlightFences[i]) != Result.Success)
             {
                 throw new Exception($"Failed to create in-flight fence {i}");
             }
         }
+
+        Console.WriteLine($"✓ Created {maxFramesInFlight} acquire semaphores (per frame) + {swapchainImageCount} present semaphores (per image) + {maxFramesInFlight} fences (per frame)");
     }
 
     public unsafe void WaitForFence(Fence fence, ulong timeout = ulong.MaxValue)
