@@ -1,4 +1,6 @@
-﻿using System.Numerics;
+﻿// SPDX-License-Identifier: MPL-2.0
+
+using System.Numerics;
 using Silk.NET.Vulkan;
 using Silk.NET.Windowing;
 using Silk.NET.Core.Contexts;
@@ -219,6 +221,7 @@ public class VulkanRenderer : IDisposable
             0.1f,
             100f);
     }
+    
 
     /// <summary>
     /// Update logic. Called once per frame before rendering.
@@ -379,7 +382,7 @@ public class VulkanRenderer : IDisposable
         // Bind pipeline
         vk.CmdBindPipeline(commandBuffer, PipelineBindPoint.Graphics, _graphicsPipeline!.Pipeline);
         
-        Console.WriteLine($"[Frame {frameIndex}] Recording draw commands for {_renderObjects.Count} objects");
+        //Console.WriteLine($"[Frame {frameIndex}] Recording draw commands for {_renderObjects.Count} objects");
         
         // Phase 2: Render all visible objects
         foreach (var renderObj in _renderObjects.Values)
@@ -387,7 +390,7 @@ public class VulkanRenderer : IDisposable
             if (!renderObj.Visible)
                 continue;
             
-            Console.WriteLine($"  Drawing: {renderObj.Mesh.Name}, IndexCount: {renderObj.Mesh.Indices.Length}");
+            //Console.WriteLine($"  Drawing: {renderObj.Mesh.Name}, IndexCount: {renderObj.Mesh.Indices.Length}");
         
             // Update uniform buffer with this object's transform BEFORE recording commands
             var ubo = new RenderingData.UniformBufferObject(renderObj.Transform, _viewMatrix, _projectionMatrix);
@@ -404,7 +407,7 @@ public class VulkanRenderer : IDisposable
             vk.CmdBindDescriptorSets(commandBuffer, PipelineBindPoint.Graphics, 
                 _graphicsPipeline!.PipelineLayout, 0, 1, &descriptorSet, 0, null);
             
-            Console.WriteLine($"    Vertex buffer: {meshGpu.VertexBuffer.Handle}, Index buffer: {meshGpu.IndexBuffer.Handle}");
+            //Console.WriteLine($"    Vertex buffer: {meshGpu.VertexBuffer.Handle}, Index buffer: {meshGpu.IndexBuffer.Handle}");
                 
             // Draw
             _meshManager.DrawMesh(commandBuffer, meshGpu);

@@ -1,4 +1,6 @@
-﻿using Silk.NET.Windowing;
+﻿// SPDX-License-Identifier: MPL-2.0
+
+using Silk.NET.Windowing;
 using Silk.NET.Maths;
 using BepuPhysics;
 

@@ -1,5 +1,6 @@
-﻿using Silk.NET.Vulkan;
-using System;
+﻿// SPDX-License-Identifier: MPL-2.0
+
+using Silk.NET.Vulkan;
 using Semaphore = Silk.NET.Vulkan.Semaphore;
 
 namespace Njulf_Framework.Rendering.Core;

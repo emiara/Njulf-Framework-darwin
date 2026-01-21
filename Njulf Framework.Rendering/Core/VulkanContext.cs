@@ -1,14 +1,15 @@
-﻿using Silk.NET.Vulkan;
+﻿// SPDX-License-Identifier: MPL-2.0
+
+using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
 using Silk.NET.Vulkan.Extensions.EXT;
 using Silk.NET.Core.Native;
-using System;
-using System.Collections.Generic;
+using Vma;
 using System.Runtime.InteropServices;
 
 namespace Njulf_Framework.Rendering.Core;
 
-public class VulkanContext : IDisposable
+public unsafe class VulkanContext : IDisposable
 {
     private Vk _vk = null!;
     private Instance _instance;
@@ -19,6 +20,7 @@ public class VulkanContext : IDisposable
     private uint _graphicsQueueFamily;
     private uint _transferQueueFamily;
     private DebugUtilsMessengerEXT _debugMessenger;
+    private Allocator* _vmaAllocator;
 
     public Instance Instance => _instance;
     public Device Device => _device;
@@ -28,6 +30,7 @@ public class VulkanContext : IDisposable
     public uint GraphicsQueueFamily => _graphicsQueueFamily;
     public uint TransferQueueFamily => _transferQueueFamily;
     public Vk VulkanApi => _vk;
+    public Allocator* VmaAllocator => _vmaAllocator;
 
     public VulkanContext(bool enableValidationLayers = true)
     {
@@ -35,9 +38,10 @@ public class VulkanContext : IDisposable
         CreateInstance(enableValidationLayers);
         SelectPhysicalDevice();
         CreateLogicalDevice(enableValidationLayers);
+        CreateVmaAllocator();
     }
 
-    private unsafe void CreateInstance(bool enableValidation)
+    private void CreateInstance(bool enableValidation)
     {
         var appInfo = new ApplicationInfo
         {
@@ -46,7 +50,7 @@ public class VulkanContext : IDisposable
             ApplicationVersion = new Silk.NET.Core.Version32(1, 0, 0),
             PEngineName = (byte*)SilkMarshal.StringToPtr("YourFramework"),
             EngineVersion = new Silk.NET.Core.Version32(1, 0, 0),
-            ApiVersion = Vk.Version11
+            ApiVersion = Vk.Version13
         };
 
         var extensions = GetRequiredExtensions(enableValidation);
@@ -61,13 +65,13 @@ public class VulkanContext : IDisposable
         var enabledExtensionNames = new List<IntPtr>();
         foreach (var ext in extensions)
         {
-            enabledExtensionNames.Add((IntPtr)SilkMarshal.StringToPtr(ext));
+            enabledExtensionNames.Add(SilkMarshal.StringToPtr(ext));
         }
 
         var enabledLayerNames = new List<IntPtr>();
         foreach (var layer in layers)
         {
-            enabledLayerNames.Add((IntPtr)SilkMarshal.StringToPtr(layer));
+            enabledLayerNames.Add(SilkMarshal.StringToPtr(layer));
         }
 
         var extensionArray = enabledExtensionNames.ToArray();
@@ -115,7 +119,7 @@ public class VulkanContext : IDisposable
         SilkMarshal.Free((nint)appInfo.PEngineName);
     }
 
-    private unsafe void SelectPhysicalDevice()
+    private void SelectPhysicalDevice()
     {
         uint deviceCount = 0;
         var result = _vk.EnumeratePhysicalDevices(_instance, &deviceCount, null);
@@ -148,9 +152,23 @@ public class VulkanContext : IDisposable
         var gpuName = SilkMarshal.PtrToString((nint)properties.DeviceName);
         System.Diagnostics.Debug.WriteLine($"Selected GPU: {gpuName}");
         Console.WriteLine($"Selected GPU: {gpuName}");
+
+        VerifyVulkan13Support();
     }
 
-    private unsafe void CreateLogicalDevice(bool enableValidation)
+    private unsafe void VerifyVulkan13Support()
+    {
+        _vk.GetPhysicalDeviceProperties(_physicalDevice, out var properties);
+        
+        uint apiVersion = properties.ApiVersion;
+        
+        if (apiVersion < Vk.Version13)
+            throw new Exception("Vulkan version 1.3 is not supported on this device");
+        
+        Console.WriteLine($"Vulkan version 1.3 is supported on this device");
+    }
+
+    private void CreateLogicalDevice(bool enableValidation)
     {
         FindQueueFamilies();
 
@@ -171,6 +189,38 @@ public class VulkanContext : IDisposable
         }
 
         var deviceFeatures = new PhysicalDeviceFeatures();
+        
+        var vulkan13Features = new PhysicalDeviceVulkan13Features()
+        {
+            SType = StructureType.PhysicalDeviceVulkan13Features,
+            DynamicRendering = true,
+            Synchronization2 = true,
+            Maintenance4 = true
+        };
+
+        var vulkan12Features = new PhysicalDeviceVulkan12Features()
+        {
+            SType = StructureType.PhysicalDeviceVulkan12Features,
+            PNext = &vulkan13Features,
+            BufferDeviceAddress = true,
+            DescriptorIndexing = true,
+            RuntimeDescriptorArray = true
+        };
+
+        var rtPipelineFeatures = new PhysicalDeviceRayTracingPipelineFeaturesKHR()
+        {
+            SType = StructureType.PhysicalDeviceRayTracingPipelineFeaturesKhr,
+            RayTracingPipeline = true
+        };
+        
+        var asFeatures = new PhysicalDeviceAccelerationStructureFeaturesKHR
+        {
+            SType = StructureType.PhysicalDeviceAccelerationStructureFeaturesKhr,
+            PNext = &rtPipelineFeatures,
+            AccelerationStructure = true
+        };
+        
+        vulkan12Features.PNext = &asFeatures;
 
         var extensions = new[] { KhrSwapchain.ExtensionName };
         var extensionPtrs = new List<IntPtr>();
@@ -195,6 +245,7 @@ public class VulkanContext : IDisposable
             var createInfo = new DeviceCreateInfo
             {
                 SType = StructureType.DeviceCreateInfo,
+                PNext = &vulkan12Features,
                 QueueCreateInfoCount = (uint)queueCreateInfos.Count,
                 PQueueCreateInfos =
                     (DeviceQueueCreateInfo*)Marshal.AllocHGlobal(queueCreateInfos.Count * sizeof(DeviceQueueCreateInfo)),
@@ -206,7 +257,7 @@ public class VulkanContext : IDisposable
             };
 
             // Copy queue create infos
-            var queueCreateInfoArray = (DeviceQueueCreateInfo*)createInfo.PQueueCreateInfos;
+            var queueCreateInfoArray = createInfo.PQueueCreateInfos;
             for (int i = 0; i < queueCreateInfos.Count; i++)
             {
                 queueCreateInfoArray[i] = queueCreateInfos[i];
@@ -226,8 +277,25 @@ public class VulkanContext : IDisposable
         foreach (var ptr in extensionPtrs)
                 Marshal.FreeHGlobal(ptr);
     }
+    
+    private void CreateVmaAllocator()
+    {
+        var createInfo = new AllocatorCreateInfo
+        {
+            Instance = _instance,
+            PhysicalDevice = _physicalDevice,
+            Device = _device,
+            VulkanApiVersion = Vk.Version13,
+            Flags = AllocatorCreateFlags.BufferDeviceAddressBit
+        };
 
-    private unsafe void FindQueueFamilies()
+        Allocator* allocator;
+        
+        Apis.CreateAllocator(&createInfo, &allocator);
+        _vmaAllocator = allocator;
+    }
+
+    private void FindQueueFamilies()
     {
         uint queueFamilyCount = 0;
         _vk.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice, &queueFamilyCount, null);
@@ -273,15 +341,23 @@ public class VulkanContext : IDisposable
         };
 
         // Add platform-specific surface extension
-        if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             extensions.Add(KhrWin32Surface.ExtensionName);
         }
-        else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux))
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
             // Try Xcb first (most common)
             extensions.Add(KhrXcbSurface.ExtensionName);
         }
+
+        extensions.Add(KhrSwapchain.ExtensionName);
+        
+        extensions.Add(KhrRayTracingPipeline.ExtensionName);
+        extensions.Add(KhrAccelerationStructure.ExtensionName);
+        extensions.Add(KhrDeferredHostOperations.ExtensionName);
+        
+        extensions.Add(KhrSynchronization2.ExtensionName);
 
         if (enableValidation)
         {
@@ -296,7 +372,7 @@ public class VulkanContext : IDisposable
         return new[] { "VK_LAYER_KHRONOS_validation" };
     }
 
-    public unsafe void Dispose()
+    public void Dispose()
     {
         if (_device.Handle != 0)
         {
@@ -307,6 +383,11 @@ public class VulkanContext : IDisposable
         if (_instance.Handle != 0)
         {
             _vk.DestroyInstance(_instance, null);
+        }
+        
+        if (_vmaAllocator != null)
+        {
+            Apis.DestroyAllocator(_vmaAllocator);
         }
     }
 }

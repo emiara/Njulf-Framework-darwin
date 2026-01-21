@@ -1,4 +1,6 @@
-﻿using Silk.NET.Vulkan;
+﻿// SPDX-License-Identifier: MPL-2.0
+
+using Silk.NET.Vulkan;
 using Njulf_Framework.Rendering.Shaders;
 using Njulf_Framework.Rendering.Data;
 using static Silk.NET.Vulkan.Pipeline;

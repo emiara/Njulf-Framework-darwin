@@ -1,4 +1,6 @@
-﻿using System.Diagnostics;
+﻿// SPDX-License-Identifier: MPL-2.0
+
+using System.Diagnostics;
 
 namespace Njulf_Framework.Rendering.Shaders;
 

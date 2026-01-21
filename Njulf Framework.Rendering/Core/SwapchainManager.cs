@@ -1,10 +1,8 @@
-﻿using Silk.NET.Vulkan;
+﻿// SPDX-License-Identifier: MPL-2.0
+
+
+using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
-using Silk.NET.Vulkan.Extensions.EXT;
-using Silk.NET.Core.Native;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace Njulf_Framework.Rendering.Core;
 

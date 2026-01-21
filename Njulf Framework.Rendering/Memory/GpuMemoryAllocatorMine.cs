@@ -1,15 +1,17 @@
-﻿using Silk.NET.Vulkan;
+﻿// SPDX-License-Identifier: MPL-2.0
+
+using Silk.NET.Vulkan;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace Njulf_Framework.Rendering.Memory;
 
-public class GpuMemoryAllocator : IDisposable
+public class GpuMemoryAllocatorMine : IDisposable
 {
     private readonly Vk _vk;
     private readonly Device _device;
     private readonly PhysicalDevice _physicalDevice;
 
-    public GpuMemoryAllocator(Vk vk, Device device, PhysicalDevice physicalDevice)
+    public GpuMemoryAllocatorMine(Vk vk, Device device, PhysicalDevice physicalDevice)
     {
         _vk = vk;
         _device = device;

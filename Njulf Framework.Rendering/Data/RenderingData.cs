@@ -1,4 +1,6 @@
-﻿using System.Numerics;
+﻿// SPDX-License-Identifier: MPL-2.0
+
+using System.Numerics;
 
 namespace Njulf_Framework.Rendering.Data;
 

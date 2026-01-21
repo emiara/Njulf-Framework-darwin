@@ -11,6 +11,8 @@
     <ItemGroup>
       <PackageReference Include="BepuPhysics" Version="2.5.0-beta.27" />
       <PackageReference Include="BepuUtilities" Version="2.5.0-beta.27" />
+      <PackageReference Include="GpuMemoryAllocator.vma" Version="3.3.0-0.2.0" />
+      <PackageReference Include="GpuMemoryAllocator.Vulkan" Version="3.3.0-0.2.0" />
       <PackageReference Include="Silk.NET.Assimp" Version="2.22.0" />
       <PackageReference Include="Silk.NET.Input" Version="2.22.0" />
       <PackageReference Include="Silk.NET.Input.Extensions" Version="2.22.0" />

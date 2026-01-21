@@ -1,4 +1,6 @@
-﻿using Silk.NET.Vulkan;
+﻿// SPDX-License-Identifier: MPL-2.0
+
+using Silk.NET.Vulkan;
 
 using System;
 using Buffer = Silk.NET.Vulkan.Buffer;
