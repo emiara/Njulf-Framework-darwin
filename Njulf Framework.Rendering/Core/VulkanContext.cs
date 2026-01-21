@@ -222,7 +222,14 @@ public unsafe class VulkanContext : IDisposable
         
         vulkan12Features.PNext = &asFeatures;
 
-        var extensions = new[] { KhrSwapchain.ExtensionName };
+        var extensions = new[]
+        {
+            KhrSwapchain.ExtensionName,
+            KhrRayTracingPipeline.ExtensionName,
+            KhrAccelerationStructure.ExtensionName,
+            KhrDeferredHostOperations.ExtensionName,
+            KhrSynchronization2.ExtensionName
+        };
         var extensionPtrs = new List<IntPtr>();
         foreach (var ext in extensions)
         {
@@ -350,14 +357,6 @@ public unsafe class VulkanContext : IDisposable
             // Try Xcb first (most common)
             extensions.Add(KhrXcbSurface.ExtensionName);
         }
-
-        extensions.Add(KhrSwapchain.ExtensionName);
-        
-        extensions.Add(KhrRayTracingPipeline.ExtensionName);
-        extensions.Add(KhrAccelerationStructure.ExtensionName);
-        extensions.Add(KhrDeferredHostOperations.ExtensionName);
-        
-        extensions.Add(KhrSynchronization2.ExtensionName);
 
         if (enableValidation)
         {
