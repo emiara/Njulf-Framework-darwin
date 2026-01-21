@@ -8,40 +8,41 @@ using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace Njulf_Framework.Rendering.Resources;
 
-public sealed class BufferManager : IDisposable
+public sealed unsafe class BufferManager : IDisposable
 {
-        private readonly Vk _vk;
-        private readonly Device _device;
-        private readonly PhysicalDevice _physicalDevice;
-        private readonly Queue _transferQueue;
-        private readonly uint _transferQueueFamily;
+    private readonly Vk _vk;
+    private readonly Allocator* _allocator;
 
-        // Track buffer-memory pairs for cleanup
-        private readonly Dictionary<Buffer, DeviceMemory> _bufferMemories = new();
-        
-        private CommandPool _transferCommandPool;
-
-        public struct BufferAllocation
-        {
-        public Buffer Buffer;
-        public DeviceMemory Memory;
+    private sealed class BufferEntry
+    {
+        public Buffer Handle;
+        public Allocation* Allocation;  
+        public ulong Size;
+        public IntPtr MappedData;
     }
 
-    public BufferManager(Vk vk, Device device, PhysicalDevice physicalDevice, Queue transferQueue, uint transferQueueFamily)
+    private readonly Dictionary<uint, BufferEntry> _buffers = new();
+    private uint _nextId = 1;
+
+    public BufferManager(Vk vk, Allocator* allocator)
     {
         _vk = vk;
-        _device = device;
-        _physicalDevice = physicalDevice;
-        _transferQueue = transferQueue;
-        _transferQueueFamily = transferQueueFamily;
+        _allocator = allocator;
     }
 
     /// <summary>
-    /// Create a GPU buffer with data and return both buffer and memory handles.
+    /// Allocate a new GPU buffer.
     /// </summary>
-    public unsafe BufferAllocation CreateBuffer(ulong size, BufferUsageFlags usage, MemoryPropertyFlags properties, void* data = null)
+    public Handles.BufferHandle AllocateBuffer(
+        ulong size,
+        BufferUsageFlags usage,
+        MemoryUsage memUsage,
+        AllocationCreateFlags flags = 0)
     {
-        var createInfo = new BufferCreateInfo
+        if (size == 0)
+            throw new ArgumentException("Buffer size must be > 0", nameof(size));
+
+        var bufferInfo = new BufferCreateInfo
         {
             SType = StructureType.BufferCreateInfo,
             Size = size,
@@ -49,227 +50,170 @@ public sealed class BufferManager : IDisposable
             SharingMode = SharingMode.Exclusive
         };
 
-        if (_vk.CreateBuffer(_device, &createInfo, null, out var buffer) != Result.Success)
+        var allocInfo = new AllocationCreateInfo
         {
-            throw new Exception("Failed to create buffer");
-        }
-
-        // Allocate memory
-        _vk.GetBufferMemoryRequirements(_device, buffer, out var memRequirements);
-        var memType = FindMemoryType(memRequirements.MemoryTypeBits, properties);
-
-        var allocInfo = new MemoryAllocateInfo
-        {
-            SType = StructureType.MemoryAllocateInfo,
-            AllocationSize = memRequirements.Size,
-            MemoryTypeIndex = memType
+            Usage = memUsage,
+            Flags = flags
         };
 
-        if (_vk.AllocateMemory(_device, &allocInfo, null, out var bufferMemory) != Result.Success)
+        // Buffer buffer;
+        // Allocation* alloc;
+        // AllocationInfo allocInfo2;
+        // var result = Apis.CreateBuffer(_allocator, &bufferInfo, &allocInfo,
+        //     &buffer, &alloc, &allocInfo2);
+        //
+        // if (result != Result.Success)
+        // {
+        //     throw new InvalidOperationException(
+        //         $"Failed to allocate buffer: {result}");
+        // }
+        BufferCreateInfo* pBufferInfo = &bufferInfo;
+        AllocationCreateInfo* pAllocInfo = &allocInfo;
+
+        Buffer buffer;
+        Allocation* allocation;
+        AllocationInfo allocationInfo;
+
+        var result = Apis.CreateBuffer(
+            _allocator,
+            pBufferInfo,
+            pAllocInfo,
+            &buffer,
+            &allocation,
+            &allocationInfo);
+
+        if (result != Result.Success)
         {
-            throw new Exception("Failed to allocate buffer memory");
+            throw new InvalidOperationException(
+                $"Failed to allocate buffer: {result}");
         }
 
-        _vk.BindBufferMemory(_device, buffer, bufferMemory, 0);
+        IntPtr mappedPtr = (IntPtr)allocationInfo.PMappedData;
 
-        // Copy data if provided
-        if (data != null)
+        var id = _nextId++;
+        _buffers[id] = new BufferEntry
         {
-            CopyDataToBuffer(bufferMemory, size, data);
-        }
+            Handle = buffer,
+            Allocation = allocation,
+            Size = size,
+            MappedData = mappedPtr
+        };
 
-        // Track for cleanup
-        _bufferMemories[buffer] = bufferMemory;
+        return new Handles.BufferHandle(id, 1);
+    }
 
-        return new BufferAllocation { Buffer = buffer, Memory = bufferMemory };
+    public Buffer GetBuffer(Handles.BufferHandle handle)
+    {
+        if (!_buffers.TryGetValue(handle.Index, out var entry))
+            throw new InvalidOperationException($"Buffer handle {handle} not found");
+        return entry.Handle;
+    }
+
+    public Allocation* GetAllocation(Handles.BufferHandle handle)
+    {
+        if (!_buffers.TryGetValue(handle.Index, out var entry))
+            throw new InvalidOperationException($"Buffer handle {handle} not found");
+        return entry.Allocation;
+    }
+
+    public ulong GetBufferSize(Handles.BufferHandle handle)
+    {
+        if (!_buffers.TryGetValue(handle.Index, out var entry))
+            throw new InvalidOperationException($"Buffer handle {handle} not found");
+        return entry.Size;
     }
 
     /// <summary>
-    /// Create a vertex buffer and upload data.
+    /// Get device address for ray tracing or GPU-driven submission.
+    /// Requires BufferUsageFlags.ShaderDeviceAddress set at creation time.
     /// </summary>
-    public unsafe Buffer CreateVertexBuffer(void* vertices, ulong sizeInBytes)
+    public ulong GetBufferDeviceAddress(Handles.BufferHandle handle)
     {
-        // Create staging buffer
-        var staging = CreateBuffer(
-            sizeInBytes,
-            BufferUsageFlags.TransferSrcBit,
-            MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
-            vertices);
-    
-        // Create device local buffer
-        var vertexBuffer = CreateBuffer(
-            sizeInBytes,
-            BufferUsageFlags.TransferDstBit | BufferUsageFlags.VertexBufferBit,
-            MemoryPropertyFlags.DeviceLocalBit);
-    
-        // Copy data
-        CopyBuffer(staging.Buffer, vertexBuffer.Buffer, sizeInBytes);
-    
-        // Cleanup staging buffer
-        _vk.DestroyBuffer(_device, staging.Buffer, null);
-        _vk.FreeMemory(_device, staging.Memory, null);
-        _bufferMemories.Remove(staging.Buffer);
-    
-        return vertexBuffer.Buffer;
-    }
-
-
-    /// <summary>
-    /// Create an index buffer and upload data.
-    /// </summary>
-    public unsafe Buffer CreateIndexBuffer(uint* indices, uint indexCount)
-    {
-        var sizeInBytes = (ulong)(indexCount * sizeof(uint));
-
-        var staging = CreateBuffer(
-            sizeInBytes,
-            BufferUsageFlags.TransferSrcBit,
-            MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
-            indices);
-
-        var indexBuffer = CreateBuffer(
-            sizeInBytes,
-            BufferUsageFlags.TransferDstBit | BufferUsageFlags.IndexBufferBit,
-            MemoryPropertyFlags.DeviceLocalBit);
-
-        CopyBuffer(staging.Buffer, indexBuffer.Buffer, sizeInBytes);
-
-        _vk.DestroyBuffer(_device, staging.Buffer, null);
-        _vk.FreeMemory(_device, staging.Memory, null);
-        _bufferMemories.Remove(staging.Buffer);
-
-        return indexBuffer.Buffer;
-    }
-
-    /// <summary>
-    /// Create a uniform buffer (dynamic per frame).
-    /// </summary>
-    public unsafe BufferAllocation CreateUniformBuffer(ulong sizeInBytes)
-    {
-        return CreateBuffer(
-            sizeInBytes,
-            BufferUsageFlags.UniformBufferBit,
-            MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit);
-    }
-
-    /// <summary>
-    /// Get the memory handle for a buffer (for mapping operations).
-    /// </summary>
-    public DeviceMemory GetBufferMemory(Buffer buffer)
-    {
-        if (_bufferMemories.TryGetValue(buffer, out var memory))
+        var buffer = GetBuffer(handle);
+        var addrInfo = new BufferDeviceAddressInfo
         {
-            return memory;
+            SType = StructureType.BufferDeviceAddressInfo,
+            Buffer = buffer
+        };
+        return _vk.GetBufferDeviceAddress(_vk.CurrentDevice!.Value, addrInfo);
+    }
+
+    /// <summary>
+    /// Get mapped CPU pointer for writing (buffer must be allocated with Mapped flag).
+    /// </summary>
+    public IntPtr GetMappedPointer(Handles.BufferHandle handle)
+    {
+        if (!_buffers.TryGetValue(handle.Index, out var entry))
+            throw new InvalidOperationException($"Buffer handle {handle} not found");
+
+        if (entry.MappedData == default)
+            throw new InvalidOperationException(
+                $"Buffer was not allocated with Mapped flag");
+
+        return entry.MappedData;
+    }
+
+    /// <summary>
+    /// Write data to a mapped buffer (CPU-side).
+    /// </summary>
+    public void WriteData<T>(Handles.BufferHandle handle, ReadOnlySpan<T> data)
+        where T : unmanaged
+    {
+        if (data.IsEmpty)
+            return;
+
+        var ptr = GetMappedPointer(handle);
+        var size = GetBufferSize(handle);
+        var bytesNeeded = (ulong)(data.Length * sizeof(T));
+
+        if (bytesNeeded > size)
+            throw new InvalidOperationException(
+                $"Data size {bytesNeeded} exceeds buffer size {size}");
+
+        fixed (T* src = data)
+        {
+            System.Buffer.MemoryCopy(src, ptr.ToPointer(), (long)size, (long)bytesNeeded);
         }
-        throw new ArgumentException($"Buffer not found in manager");
     }
 
-    private unsafe void CopyDataToBuffer(DeviceMemory memory, ulong size, void* data)
+    /// <summary>
+    /// Flush a mapped buffer range to GPU (needed for non-coherent memory).
+    /// </summary>
+    public void FlushBuffer(Handles.BufferHandle handle, ulong offset = 0, ulong size = ulong.MaxValue)
     {
-        void* memPtr = null;
-        _vk.MapMemory(_device, memory, 0, size, MemoryMapFlags.None, &memPtr);
-        System.Buffer.MemoryCopy(data, memPtr, (long)size, (long)size);
-        _vk.UnmapMemory(_device, memory);
+        var alloc = GetAllocation(handle);
+        var actualSize = size == ulong.MaxValue ? GetBufferSize(handle) : size;
+        Apis.FlushAllocation(_allocator, alloc, offset, actualSize);
     }
 
-    private unsafe void CopyBuffer(Buffer srcBuffer, Buffer dstBuffer, ulong size)
+    /// <summary>
+    /// Invalidate a mapped buffer range (reading from GPU).
+    /// </summary>
+    public void InvalidateBuffer(Handles.BufferHandle handle, ulong offset = 0, ulong size = ulong.MaxValue)
     {
-        // Create command pool if it doesn't exist
-        if (_transferCommandPool.Handle == 0)
-        {
-            var poolInfo = new CommandPoolCreateInfo
-            {
-                SType = StructureType.CommandPoolCreateInfo,
-                QueueFamilyIndex = _transferQueueFamily,
-                Flags = CommandPoolCreateFlags.TransientBit
-            };
+        var alloc = GetAllocation(handle);
+        var actualSize = size == ulong.MaxValue ? GetBufferSize(handle) : size;
+        Apis.InvalidateAllocation(_allocator, alloc, offset, actualSize);
+    }
 
-            if (_vk.CreateCommandPool(_device, &poolInfo, null, out _transferCommandPool) != Result.Success)
-            {
-                throw new Exception("Failed to create transfer command pool");
-            }
-        }
-
-        // Allocate command buffer
-        var allocInfo = new CommandBufferAllocateInfo
-        {
-            SType = StructureType.CommandBufferAllocateInfo,
-            Level = CommandBufferLevel.Primary,
-            CommandPool = _transferCommandPool,
-            CommandBufferCount = 1
-        };
-
-        CommandBuffer commandBuffer;
-        _vk.AllocateCommandBuffers(_device, &allocInfo, &commandBuffer);
-
-        // Begin recording
-        var beginInfo = new CommandBufferBeginInfo
-        {
-            SType = StructureType.CommandBufferBeginInfo,
-            Flags = CommandBufferUsageFlags.OneTimeSubmitBit
-        };
-
-        _vk.BeginCommandBuffer(commandBuffer, &beginInfo);
-
-        // Record copy command
-        var copyRegion = new BufferCopy
-        {
-            SrcOffset = 0,
-            DstOffset = 0,
-            Size = size
-        };
-
-        _vk.CmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
-
-        // End recording
-        _vk.EndCommandBuffer(commandBuffer);
-
-        // Submit and wait
-        var submitInfo = new SubmitInfo
-        {
-            SType = StructureType.SubmitInfo,
-            CommandBufferCount = 1,
-            PCommandBuffers = &commandBuffer
-        };
-
-        _vk.QueueSubmit(_transferQueue, 1, &submitInfo, default);
-        _vk.QueueWaitIdle(_transferQueue);
-
-        // Cleanup command buffer
-        _vk.FreeCommandBuffers(_device, _transferCommandPool, 1, &commandBuffer);
+    /// <summary>
+    /// Free a buffer handle. The handle becomes invalid after this.
+    /// </summary>
+    public void FreeBuffer(Handles.BufferHandle handle)
+    {
+        if (!_buffers.Remove(handle.Index, out var entry))
+            return;
         
-        Console.WriteLine($"✓ Copied {size} bytes between buffers");
+        Apis.DestroyBuffer(_allocator, entry.Handle, entry.Allocation);
+        
     }
 
-    private uint FindMemoryType(uint typeFilter, MemoryPropertyFlags properties)
+    public void Dispose()
     {
-        _vk.GetPhysicalDeviceMemoryProperties(_physicalDevice, out var memProperties);
-
-        for (uint i = 0; i < memProperties.MemoryTypeCount; i++)
+        foreach (var (_, entry) in _buffers)
         {
-            if ((typeFilter & (1 << (int)i)) != 0 && 
-                (memProperties.MemoryTypes[(int)i].PropertyFlags & properties) == properties)
-            {
-                return i;
-            }
+            Apis.DestroyBuffer(_allocator, entry.Handle, entry.Allocation);
         }
-
-        throw new Exception("Failed to find suitable memory type");
-    }
-
-    public unsafe void Dispose()
-    {
-        // Destroy command pool
-        if (_transferCommandPool.Handle != 0)
-        {
-            _vk.DestroyCommandPool(_device, _transferCommandPool, null);
-        }
-
-        foreach (var kvp in _bufferMemories)
-        {
-            _vk.DestroyBuffer(_device, kvp.Key, null);
-            _vk.FreeMemory(_device, kvp.Value, null);
-        }
-        _bufferMemories.Clear();
+        _buffers.Clear();
     }
 }

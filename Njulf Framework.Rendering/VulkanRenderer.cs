@@ -59,7 +59,7 @@ public class VulkanRenderer : IDisposable
     /// <summary>
     /// Initialize the renderer. Called once at startup.
     /// </summary>
-    public void Load()
+    public unsafe void Load()
     {
         try
         {
