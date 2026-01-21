@@ -3,11 +3,12 @@
 using Silk.NET.Vulkan;
 using System;
 using Njulf_Framework.Rendering.Data;
+using Vma;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace Njulf_Framework.Rendering.Resources;
 
-public class BufferManager : IDisposable
+public sealed class BufferManager : IDisposable
 {
         private readonly Vk _vk;
         private readonly Device _device;
