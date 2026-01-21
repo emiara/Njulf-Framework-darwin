@@ -1,4 +1,6 @@
-﻿namespace Njulf_Framework.Rendering.Resources.Handles;
+﻿// SPDX-License-Identifier: MPL-2.0
+
+namespace Njulf_Framework.Rendering.Resources.Handles;
 
 public sealed class HandleGenerator
 {

@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿// SPDX-License-Identifier: MPL-2.0
+
+using System.Collections.Generic;
 
 namespace Njulf_Framework.Rendering.Resources.Descriptors;
 

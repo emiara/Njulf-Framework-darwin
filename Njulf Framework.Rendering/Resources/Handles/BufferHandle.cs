@@ -1,4 +1,6 @@
-﻿using System;
+﻿// SPDX-License-Identifier: MPL-2.0
+
+using System;
 
 namespace Njulf_Framework.Rendering.Resources.Handles;
 

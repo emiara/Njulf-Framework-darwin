@@ -2,7 +2,7 @@
 
 using Silk.NET.Vulkan;
 using System;
-using Njulf_Framework.Rendering.Data;
+using Njulf_Framework.Rendering.Resources.Handles;
 using Vma;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
@@ -206,6 +206,18 @@ public sealed unsafe class BufferManager : IDisposable
         
         Apis.DestroyBuffer(_allocator, entry.Handle, entry.Allocation);
         
+    }
+    
+    public void DestroyBuffer(BufferHandle handle)
+    {
+        if (!handle.IsValid)
+            return;
+
+        if (_buffers.TryGetValue(handle.Index, out var entry))
+        {
+            Apis.DestroyBuffer(_allocator, entry.Handle, entry.Allocation);
+            _buffers.Remove(handle.Index);
+        }
     }
 
     public void Dispose()

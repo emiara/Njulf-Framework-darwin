@@ -1,4 +1,6 @@
-﻿using Vma;
+﻿// SPDX-License-Identifier: MPL-2.0
+
+using Vma;
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
