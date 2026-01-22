@@ -3,13 +3,15 @@
 using System.Numerics;
 using Silk.NET.Vulkan;
 using Silk.NET.Windowing;
-using Silk.NET.Core.Contexts;
+using Silk.NET.Vulkan.Extensions.KHR;
+using Semaphore = Silk.NET.Vulkan.Semaphore;
+using Vma;
 using Njulf_Framework.Rendering.Core;
 using Njulf_Framework.Rendering.Resources;
 using Njulf_Framework.Rendering.Pipeline;
 using Njulf_Framework.Rendering.Data;
-using Silk.NET.Vulkan.Extensions.KHR;
-using Semaphore = Silk.NET.Vulkan.Semaphore;
+using Njulf_Framework.Rendering.Memory;
+using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace Njulf_Framework.Rendering;
 
@@ -32,6 +34,15 @@ public class VulkanRenderer : IDisposable
     private MeshManager? _meshManager;
     private UniformBufferManager? _uniformBufferManager;
     private DescriptorManager? _descriptorManager;
+    
+    private readonly SceneDataBuilder _sceneBuilder;
+    private readonly FrameUploadRing _frameUploadRing;
+
+    private Buffer _sceneObjectBuffer;
+    private Buffer _sceneMaterialBuffer;
+    private Buffer _sceneMeshBuffer;
+
+    private uint _frameIndex;
 
     // Phase 2: Scene objects
     private Dictionary<string, RenderingData.RenderObject> _renderObjects = new();
@@ -51,9 +62,18 @@ public class VulkanRenderer : IDisposable
     public VulkanContext VulkanContext => _vulkanContext!;
     public Core.SwapchainManager SwapchainManager => _swapchainManager!;
 
-    public VulkanRenderer(IWindow window)
+    public unsafe VulkanRenderer(IWindow window)
     {
         _window = window ?? throw new ArgumentNullException(nameof(window));
+        
+        _vulkanContext = new VulkanContext(enableValidationLayers: true);
+        
+        _bufferManager = new BufferManager(_vulkanContext.VulkanApi, _vulkanContext.VmaAllocator);
+        
+        _sceneBuilder = new SceneDataBuilder();
+        _frameUploadRing = new FrameUploadRing(_bufferManager);
+
+        InitializeSceneBuffers();
     }
 
     /// <summary>
@@ -63,8 +83,8 @@ public class VulkanRenderer : IDisposable
     {
         try
         {
-            _vulkanContext = new VulkanContext(enableValidationLayers: true);
-            Console.WriteLine("✓ Vulkan context created");
+            // _vulkanContext = new VulkanContext(enableValidationLayers: true);
+            // Console.WriteLine("✓ Vulkan context created");
             
             // Get the KhrSwapchain extension
             if (!_vulkanContext.VulkanApi.TryGetDeviceExtension(_vulkanContext.Instance, _vulkanContext.Device, out _khrSwapchain))
@@ -96,8 +116,7 @@ public class VulkanRenderer : IDisposable
 
 
             _commandBufferManager = new CommandBufferManager(
-                _vulkanContext.VulkanApi,
-                _vulkanContext.Device,
+                _vulkanContext,
                 _vulkanContext.GraphicsQueueFamily,
                 MaxFramesInFlight);
             Console.WriteLine("✓ Command buffers allocated");
@@ -134,13 +153,13 @@ public class VulkanRenderer : IDisposable
             Console.WriteLine("✓ Descriptor manager initialized");
             
             // Phase 2: Initialize resource managers
-            _bufferManager = new BufferManager(
-                _vulkanContext.VulkanApi,
-                _vulkanContext.Device,
-                _vulkanContext.PhysicalDevice,
-                _vulkanContext.TransferQueue,
-                _vulkanContext.TransferQueueFamily);
-            Console.WriteLine("✓ Buffer manager initialized");
+            // _bufferManager = new BufferManager(
+            //     _vulkanContext.VulkanApi,
+            //     _vulkanContext.Device,
+            //     _vulkanContext.PhysicalDevice,
+            //     _vulkanContext.TransferQueue,
+            //     _vulkanContext.TransferQueueFamily);
+            //Console.WriteLine("✓ Buffer manager initialized");
             
             _uniformBufferManager = new UniformBufferManager(
                 _vulkanContext.VulkanApi,
@@ -154,6 +173,8 @@ public class VulkanRenderer : IDisposable
                 _vulkanContext.Device,
                 _bufferManager);
             Console.WriteLine("✓ Mesh manager initialized");
+
+            
 
             // Update descriptor sets with uniform buffers
             for (uint i = 0; i < MaxFramesInFlight; i++)
@@ -222,6 +243,40 @@ public class VulkanRenderer : IDisposable
             100f);
     }
     
+    private void InitializeSceneBuffers()
+    {
+        if (_bufferManager == null)
+            throw new InvalidOperationException("BufferManager not initialized");
+
+        const ulong objectBufferSize   = 16 * 1024 * 1024;   // 16 MB for objects
+        const ulong materialBufferSize = 4 * 1024 * 1024;    // 4 MB for materials
+        const ulong meshBufferSize     = 8 * 1024 * 1024;    // 8 MB for mesh data
+
+        var storageUsage = BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit;
+
+        var objectHandle = _bufferManager.AllocateBuffer(
+            objectBufferSize,
+            storageUsage,
+            MemoryUsage.AutoPreferDevice);
+
+        var materialHandle = _bufferManager.AllocateBuffer(
+            materialBufferSize,
+            storageUsage,
+            MemoryUsage.AutoPreferDevice);
+
+        var meshHandle = _bufferManager.AllocateBuffer(
+            meshBufferSize,
+            storageUsage,
+            MemoryUsage.AutoPreferDevice);
+
+        _sceneObjectBuffer = _bufferManager.GetBuffer(objectHandle);
+        _sceneMaterialBuffer = _bufferManager.GetBuffer(materialHandle);
+        _sceneMeshBuffer = _bufferManager.GetBuffer(meshHandle);
+
+        // TODO: Register these in BindlessDescriptorHeap later (Phase 1.3)
+    }
+
+    
 
     /// <summary>
     /// Update logic. Called once per frame before rendering.
@@ -253,6 +308,7 @@ public class VulkanRenderer : IDisposable
         var vk = _vulkanContext.VulkanApi;
         var device = _vulkanContext.Device;
         var graphicsQueue = _vulkanContext.GraphicsQueue;
+        var transferQueue = _vulkanContext.TransferQueue;
 
         // Get this frame's resources (per-frame)
         var frameIndex = _currentFrameIndex % MaxFramesInFlight;
@@ -285,6 +341,37 @@ public class VulkanRenderer : IDisposable
 
         // Get the render finished semaphore for THIS IMAGE (per-image)
         var renderFinishedSemaphore = _synchronizationManager.RenderFinishedSemaphores[imageIndex];
+        
+        _sceneBuilder.BeginFrame();
+        foreach (var kvp in _renderObjects)
+        {
+            var obj = kvp.Value;
+            if (obj != null && obj.Visible)
+            {
+                _sceneBuilder.AddObject(obj);
+            }
+        }
+        
+        var transferCommandBuffer = _commandBufferManager.TransferCommandBuffers[frameIndex];
+        _commandBufferManager.ResetCommandBuffer(transferCommandBuffer);
+        _commandBufferManager.BeginRecording(transferCommandBuffer);
+
+        // Write CPU scene data to staging buffer and record copy commands
+        _sceneBuilder.UploadToGPU(
+            transferCommandBuffer,
+            _frameUploadRing,
+            _sceneObjectBuffer,
+            _sceneMaterialBuffer,
+            _sceneMeshBuffer);
+
+        _commandBufferManager.EndRecording(transferCommandBuffer);
+
+        // Submit transfer work (asynchronously on transfer queue)
+        SubmitTransferCommandBuffer(transferCommandBuffer);
+
+        // Wait for transfer to complete before rendering
+        // (Optional: use a semaphore instead if your queue supports it)
+        vk.QueueWaitIdle(transferQueue);
 
         // Record commands
         var commandBuffer = _commandBufferManager.CommandBuffers[frameIndex];
@@ -301,7 +388,8 @@ public class VulkanRenderer : IDisposable
 
         // Present frame
         PresentFrame(imageIndex, renderFinishedSemaphore);
-
+        
+        _frameUploadRing.NextFrame(); 
         _currentFrameIndex++;
     }
 
@@ -415,6 +503,23 @@ public class VulkanRenderer : IDisposable
         
         // End render pass
         vk.CmdEndRenderPass(commandBuffer);
+    }
+    
+    private unsafe void SubmitTransferCommandBuffer(CommandBuffer transferCmd)
+    {
+        var vk = _vulkanContext.VulkanApi;
+        var transferQueue = _vulkanContext.TransferQueue;
+
+        var submitInfo = new SubmitInfo
+        {
+            SType = StructureType.SubmitInfo,
+            CommandBufferCount = 1,
+            PCommandBuffers = &transferCmd
+        };
+
+        var result = vk.QueueSubmit(transferQueue, 1, &submitInfo, default);
+        if (result != Result.Success)
+            throw new Exception($"Transfer queue submit failed: {result}");
     }
 
     private unsafe void SubmitCommandBuffer(Queue queue, CommandBuffer commandBuffer,
