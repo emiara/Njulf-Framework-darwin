@@ -8,6 +8,7 @@ using Semaphore = Silk.NET.Vulkan.Semaphore;
 using Vma;
 using Njulf_Framework.Rendering.Core;
 using Njulf_Framework.Rendering.Resources;
+using Njulf_Framework.Rendering.Resources.Descriptors;
 using Njulf_Framework.Rendering.Pipeline;
 using Njulf_Framework.Rendering.Data;
 using Njulf_Framework.Rendering.Memory;
@@ -32,8 +33,10 @@ public class VulkanRenderer : IDisposable
     // Phase 2: Resource managers
     private BufferManager? _bufferManager;
     private MeshManager? _meshManager;
-    private UniformBufferManager? _uniformBufferManager;
     private DescriptorManager? _descriptorManager;
+    
+    private DescriptorSetLayouts? _descriptorSetLayouts;
+    private BindlessDescriptorHeap? _bindlessHeap;
     
     private readonly SceneDataBuilder _sceneBuilder;
     private readonly FrameUploadRing _frameUploadRing;
@@ -72,8 +75,6 @@ public class VulkanRenderer : IDisposable
         
         _sceneBuilder = new SceneDataBuilder();
         _frameUploadRing = new FrameUploadRing(_bufferManager);
-
-        InitializeSceneBuffers();
     }
 
     /// <summary>
@@ -161,43 +162,30 @@ public class VulkanRenderer : IDisposable
             //     _vulkanContext.TransferQueueFamily);
             //Console.WriteLine("✓ Buffer manager initialized");
             
-            _uniformBufferManager = new UniformBufferManager(
-                _vulkanContext.VulkanApi,
-                _vulkanContext.Device,
-                _bufferManager,
-                MaxFramesInFlight);
-            Console.WriteLine("✓ Uniform buffer manager initialized");
-            
             _meshManager = new MeshManager(
                 _vulkanContext.VulkanApi,
                 _vulkanContext.Device,
                 _bufferManager);
             Console.WriteLine("✓ Mesh manager initialized");
 
-            
+            // Create bindless descriptor layouts
+            _descriptorSetLayouts = new DescriptorSetLayouts(
+                _vulkanContext.VulkanApi,
+                _vulkanContext.Device);
+            Console.WriteLine("✓ Bindless descriptor layouts created");
 
-            // Update descriptor sets with uniform buffers
-            for (uint i = 0; i < MaxFramesInFlight; i++)
-            {
-                if (_uniformBufferManager != null)
-                {
-                    var uniformBuffer = _uniformBufferManager.GetUniformBuffer(i);
-                    Console.WriteLine($"Frame {i}: Uniform buffer handle = {uniformBuffer.Handle}");
-                    
-                    _descriptorManager.UpdateDescriptorSet(i, uniformBuffer, 
-                        RenderingData.UniformBufferObject.GetSizeInBytes());
-                }
+            // Create bindless descriptor heap
+            _bindlessHeap = new BindlessDescriptorHeap(
+                _vulkanContext.VulkanApi,
+                _vulkanContext.Device,
+                _descriptorSetLayouts);
+            Console.WriteLine("✓ Bindless descriptor heap created");
 
-                // Initialize with identity matrices so descriptor has valid data
-                var initialUbo = new RenderingData.UniformBufferObject(
-                    Matrix4x4.Identity,
-                    _viewMatrix,
-                    _projectionMatrix);
-                if (_uniformBufferManager != null) _uniformBufferManager.UpdateUniformBuffer(i, initialUbo);
-                
-                Console.WriteLine($"✓ Frame {i}: Descriptor set updated and uniform buffer initialized");
-            }
-            Console.WriteLine("✓ Descriptor sets updated with uniform buffers");
+            // Register scene buffers in bindless heap
+            _bindlessHeap.UpdateBuffer(0, _sceneObjectBuffer, 16 * 1024 * 1024);   // Object buffer index 0
+            _bindlessHeap.UpdateBuffer(1, _sceneMaterialBuffer, 4 * 1024 * 1024);   // Material buffer index 1
+            _bindlessHeap.UpdateBuffer(2, _sceneMeshBuffer, 8 * 1024 * 1024);       // Mesh buffer index 2
+            Console.WriteLine("✓ Scene buffers registered in bindless heap");
 
             // Create graphics pipeline
             // _graphicsPipeline = new GraphicsPipeline(
@@ -235,6 +223,8 @@ public class VulkanRenderer : IDisposable
             }
             throw;
         }
+        
+        InitializeSceneBuffers();
         
         _projectionMatrix = Matrix4x4.CreatePerspectiveFieldOfView(
             MathF.PI / 4,
@@ -299,8 +289,7 @@ public class VulkanRenderer : IDisposable
         if (_vulkanContext == null || _swapchainManager == null || 
             _commandBufferManager == null || _synchronizationManager == null ||
             _renderPassManager == null || _framebufferManager == null ||
-            _graphicsPipeline == null || _meshManager == null ||
-            _uniformBufferManager == null)
+            _graphicsPipeline == null || _meshManager == null)
         {
             return;
         }
@@ -314,6 +303,7 @@ public class VulkanRenderer : IDisposable
         var frameIndex = _currentFrameIndex % MaxFramesInFlight;
         var inFlightFence = _synchronizationManager.InFlightFences[frameIndex];
         var imageAvailableSemaphore = _synchronizationManager.ImageAvailableSemaphores[frameIndex];
+        var transferFinishedSemaphore = _synchronizationManager.TransferFinishedSemaphores[frameIndex];
 
         // Wait for this frame's fence to complete
         vk.WaitForFences(device, 1, &inFlightFence, true, ulong.MaxValue);
@@ -367,11 +357,8 @@ public class VulkanRenderer : IDisposable
         _commandBufferManager.EndRecording(transferCommandBuffer);
 
         // Submit transfer work (asynchronously on transfer queue)
-        SubmitTransferCommandBuffer(transferCommandBuffer);
-
-        // Wait for transfer to complete before rendering
-        // (Optional: use a semaphore instead if your queue supports it)
-        vk.QueueWaitIdle(transferQueue);
+        SubmitTransferCommandBuffer(transferCommandBuffer, transferFinishedSemaphore);
+        
 
         // Record commands
         var commandBuffer = _commandBufferManager.CommandBuffers[frameIndex];
@@ -383,7 +370,7 @@ public class VulkanRenderer : IDisposable
         _commandBufferManager.EndRecording(commandBuffer);
 
         // Submit command buffer
-        SubmitCommandBuffer(graphicsQueue, commandBuffer, imageAvailableSemaphore, 
+        SubmitCommandBuffer(graphicsQueue, commandBuffer, imageAvailableSemaphore, transferFinishedSemaphore,
             renderFinishedSemaphore, inFlightFence);
 
         // Present frame
@@ -442,35 +429,63 @@ public class VulkanRenderer : IDisposable
     private unsafe void RecordRenderCommands(CommandBuffer commandBuffer, uint imageIndex, uint frameIndex)
     {
         var vk = _vulkanContext!.VulkanApi;
-        var framebuffer = _framebufferManager!.Framebuffers[imageIndex];
+        var colorImageView = _swapchainManager!.SwapchainImageViews[imageIndex];
         
+        // ✅ DYNAMIC RENDERING: Define attachments inline
         // Clear color: dark gray (0.1, 0.1, 0.1)
-        var clearValue = new ClearValue 
-        { 
-            Color = new ClearColorValue(0.1f, 0.1f, 0.1f, 1.0f)
-            //Color = new ClearColorValue(1.0f, 0.0f, 0.0f, 1.0f)
-        };
-        
-        var renderPassBeginInfo = new RenderPassBeginInfo
+        var colorAttachment = new RenderingAttachmentInfo
         {
-            SType = StructureType.RenderPassBeginInfo,
-            RenderPass = _renderPassManager!.RenderPass,
-            Framebuffer = framebuffer,
+            SType = StructureType.RenderingAttachmentInfo,
+            ImageView = colorImageView,
+            ImageLayout = ImageLayout.ColorAttachmentOptimal,
+            LoadOp = AttachmentLoadOp.Clear,
+            StoreOp = AttachmentStoreOp.Store,
+            ClearValue = new ClearValue 
+            { 
+                Color = new ClearColorValue(0.1f, 0.1f, 0.1f, 1.0f)
+            }
+        };
+
+        // Depth attachment (if needed - optional for now)
+        // var depthAttachment = new RenderingAttachmentInfo
+        // {
+        //     SType = StructureType.RenderingAttachmentInfo,
+        //     ImageView = _depthImageView,
+        //     ImageLayout = ImageLayout.DepthAttachmentOptimal,
+        //     LoadOp = AttachmentLoadOp.Clear,
+        //     StoreOp = AttachmentStoreOp.DontCare,
+        //     ClearValue = new ClearValue { DepthStencil = new ClearDepthStencilValue(1.0f, 0) }
+        // };
+
+        // ✅ Create rendering info (replaces RenderPassBeginInfo + Framebuffer)
+        var renderingInfo = new RenderingInfo
+        {
+            SType = StructureType.RenderingInfo,
             RenderArea = new Rect2D
             {
                 Offset = new Offset2D { X = 0, Y = 0 },
-                Extent = _swapchainManager!.SwapchainExtent
+                Extent = _swapchainManager.SwapchainExtent
             },
-            ClearValueCount = 1,
-            PClearValues = &clearValue
+            LayerCount = 1,
+            ColorAttachmentCount = 1,
+            PColorAttachments = &colorAttachment
+            // PDepthAttachment = &depthAttachment,  // Uncomment when depth is needed
         };
-        
-        vk.CmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, SubpassContents.Inline);
-        
+
+        // ✅ Begin dynamic rendering (NO render pass needed!)
+        vk.CmdBeginRendering(commandBuffer, &renderingInfo);
+
         // Bind pipeline
         vk.CmdBindPipeline(commandBuffer, PipelineBindPoint.Graphics, _graphicsPipeline!.Pipeline);
         
-        //Console.WriteLine($"[Frame {frameIndex}] Recording draw commands for {_renderObjects.Count} objects");
+        // Bind bindless descriptor sets (buffers + textures)
+        var descriptorSets = stackalloc DescriptorSet[2] 
+        { 
+            _bindlessHeap!.BufferSet, 
+            _bindlessHeap!.TextureSet 
+        };
+        vk.CmdBindDescriptorSets(commandBuffer, PipelineBindPoint.Graphics, 
+            _graphicsPipeline!.PipelineLayout, 0, 2, descriptorSets, 0, null);
         
         // Phase 2: Render all visible objects
         foreach (var renderObj in _renderObjects.Values)
@@ -478,34 +493,23 @@ public class VulkanRenderer : IDisposable
             if (!renderObj.Visible)
                 continue;
             
-            //Console.WriteLine($"  Drawing: {renderObj.Mesh.Name}, IndexCount: {renderObj.Mesh.Indices.Length}");
-        
-            // Update uniform buffer with this object's transform BEFORE recording commands
-            var ubo = new RenderingData.UniformBufferObject(renderObj.Transform, _viewMatrix, _projectionMatrix);
-            _uniformBufferManager!.UpdateUniformBuffer(frameIndex, ubo);
         
             // Get mesh GPU data (cached if already uploaded)
             var meshGpu = _meshManager!.GetOrCreateMeshGpu(renderObj.Mesh);
         
             // Bind mesh
             _meshManager.BindMesh(commandBuffer, meshGpu);
-            
-            // Bind descriptor set for this frame
-            var descriptorSet = _descriptorManager!.DescriptorSets[frameIndex];
-            vk.CmdBindDescriptorSets(commandBuffer, PipelineBindPoint.Graphics, 
-                _graphicsPipeline!.PipelineLayout, 0, 1, &descriptorSet, 0, null);
-            
-            //Console.WriteLine($"    Vertex buffer: {meshGpu.VertexBuffer.Handle}, Index buffer: {meshGpu.IndexBuffer.Handle}");
                 
             // Draw
             _meshManager.DrawMesh(commandBuffer, meshGpu);
         }
         
-        // End render pass
-        vk.CmdEndRenderPass(commandBuffer);
+        // ✅ End dynamic rendering (replaces vkCmdEndRenderPass)
+        vk.CmdEndRendering(commandBuffer);
     }
+
     
-    private unsafe void SubmitTransferCommandBuffer(CommandBuffer transferCmd)
+    private unsafe void SubmitTransferCommandBuffer(CommandBuffer transferCmd, Semaphore transferFinishedSemaphore)
     {
         var vk = _vulkanContext.VulkanApi;
         var transferQueue = _vulkanContext.TransferQueue;
@@ -514,7 +518,9 @@ public class VulkanRenderer : IDisposable
         {
             SType = StructureType.SubmitInfo,
             CommandBufferCount = 1,
-            PCommandBuffers = &transferCmd
+            PCommandBuffers = &transferCmd,
+            SignalSemaphoreCount = 1,           
+            PSignalSemaphores = &transferFinishedSemaphore 
         };
 
         var result = vk.QueueSubmit(transferQueue, 1, &submitInfo, default);
@@ -523,21 +529,32 @@ public class VulkanRenderer : IDisposable
     }
 
     private unsafe void SubmitCommandBuffer(Queue queue, CommandBuffer commandBuffer,
-        Semaphore waitSemaphore, Semaphore signalSemaphore, Fence fence)
+        Semaphore waitImageReadySemaphore, Semaphore waitTransferFinishedSemaphore, Semaphore signalRenderSemaphore, Fence fence)
     {
         var vk = _vulkanContext!.VulkanApi;
+        
+        var waitSemaphores = stackalloc Semaphore[2]
+        {
+            waitImageReadySemaphore,
+            waitTransferFinishedSemaphore
+        };
 
-        var waitStage = PipelineStageFlags.ColorAttachmentOutputBit;
+        var waitStages = stackalloc PipelineStageFlags[2]
+        {
+            PipelineStageFlags.ColorAttachmentOutputBit,
+            PipelineStageFlags.TopOfPipeBit
+        };
+        
         var submitInfo = new SubmitInfo
         {
             SType = StructureType.SubmitInfo,
-            WaitSemaphoreCount = 1,
-            PWaitSemaphores = &waitSemaphore,
-            PWaitDstStageMask = &waitStage,
+            WaitSemaphoreCount = 2,
+            PWaitSemaphores = waitSemaphores,
+            PWaitDstStageMask = waitStages,
             CommandBufferCount = 1,
             PCommandBuffers = &commandBuffer,
             SignalSemaphoreCount = 1,
-            PSignalSemaphores = &signalSemaphore
+            PSignalSemaphores = &signalRenderSemaphore
         };
 
         if (vk.QueueSubmit(queue, 1, &submitInfo, fence) != Result.Success)
@@ -607,9 +624,11 @@ public class VulkanRenderer : IDisposable
 
         // Phase 2: Dispose resource managers
         _descriptorManager?.Dispose();
-        _uniformBufferManager?.Dispose();
         _meshManager?.Dispose();
         _bufferManager?.Dispose();
+        
+        _bindlessHeap?.Dispose();
+        _descriptorSetLayouts?.Dispose();
 
         _graphicsPipeline?.Dispose();
         _framebufferManager?.Dispose();

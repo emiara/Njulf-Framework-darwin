@@ -13,20 +13,30 @@ public class GraphicsPipeline : IDisposable
     private readonly Device _device;
     private Silk.NET.Vulkan.Pipeline _pipeline;
     public PipelineLayout PipelineLayout;
+    
+    // Dynamic rendering formats (no more RenderPass needed!)
+    private Format _colorFormat;
+    private Format _depthFormat;
 
     public Silk.NET.Vulkan.Pipeline Pipeline => _pipeline;
+    public Format ColorFormat => _colorFormat;
+    public Format DepthFormat => _depthFormat;
 
     public unsafe GraphicsPipeline(
         Vk vk,
         Device device,
-        RenderPass renderPass,
+        RenderPass renderPass,  // DEPRECATED - kept for compatibility, ignored in dynamic rendering
         Extent2D swapchainExtent,
         DescriptorSetLayout descriptorSetLayout,
+        Format colorFormat = Format.B8G8R8A8Unorm,
+        Format depthFormat = Format.D32Sfloat,
         string vertShaderPath = "Shaders/vertex.glsl",
         string fragShaderPath = "Shaders/fragment.glsl")
     {
         _vk = vk;
         _device = device;
+        _colorFormat = colorFormat;
+        _depthFormat = depthFormat;
 
         // Compile shaders from GLSL to SPIR-V
         Console.WriteLine($"Compiling vertex shader: {vertShaderPath}");
@@ -64,8 +74,7 @@ public class GraphicsPipeline : IDisposable
 
                 var shaderStages = stackalloc PipelineShaderStageCreateInfo[] { vertStageInfo, fragStageInfo };
 
-                // Vertex input state - Phase 2: Configure for actual vertex data
-                // Vertex input state - with actual vertex data
+                // Vertex input state
                 var bindingDescription = new VertexInputBindingDescription
                 {
                     Binding = 0,
@@ -110,16 +119,6 @@ public class GraphicsPipeline : IDisposable
                     VertexAttributeDescriptionCount = 3,
                     PVertexAttributeDescriptions = attributeDescriptions
                 };
-
-                
-                // var vertexInputInfo = new PipelineVertexInputStateCreateInfo
-                // {
-                //     SType = StructureType.PipelineVertexInputStateCreateInfo,
-                //     VertexBindingDescriptionCount = 1,
-                //     PVertexBindingDescriptions = &bindingDescription,
-                //     VertexAttributeDescriptionCount = 3,
-                //     PVertexAttributeDescriptions = attributeDescriptions
-                // };
 
                 // Input assembly
                 var inputAssembly = new PipelineInputAssemblyStateCreateInfo
@@ -198,6 +197,17 @@ public class GraphicsPipeline : IDisposable
                 colorBlending.BlendConstants[2] = 0.0f;
                 colorBlending.BlendConstants[3] = 0.0f;
 
+                // Depth stencil state
+                var depthStencil = new PipelineDepthStencilStateCreateInfo
+                {
+                    SType = StructureType.PipelineDepthStencilStateCreateInfo,
+                    DepthTestEnable = true,
+                    DepthWriteEnable = true,
+                    DepthCompareOp = CompareOp.Less,
+                    DepthBoundsTestEnable = false,
+                    StencilTestEnable = false
+                };
+
                 // Pipeline layout (for descriptors/uniforms)
                 var pipelineLayoutInfo = new PipelineLayoutCreateInfo
                 {
@@ -211,10 +221,25 @@ public class GraphicsPipeline : IDisposable
                     throw new Exception("Failed to create pipeline layout");
                 }
 
-                // Create pipeline
+                // ✅ DYNAMIC RENDERING: Create VkPipelineRenderingCreateInfo
+                // This replaces VkRenderPass and VkFramebuffer in the pipeline creation
+                var colorAttachmentFormat = _colorFormat;
+                var depthAttachmentFormat = _depthFormat;
+
+                var pipelineRenderingInfo = new PipelineRenderingCreateInfo
+                {
+                    SType = StructureType.PipelineRenderingCreateInfo,
+                    ColorAttachmentCount = 1,
+                    PColorAttachmentFormats = &colorAttachmentFormat,
+                    DepthAttachmentFormat = depthAttachmentFormat,
+                    StencilAttachmentFormat = Format.Undefined  // Not using stencil
+                };
+
+                // Create pipeline WITH dynamic rendering, WITHOUT render pass
                 var pipelineInfo = new GraphicsPipelineCreateInfo
                 {
                     SType = StructureType.GraphicsPipelineCreateInfo,
+                    PNext = &pipelineRenderingInfo,  // ✅ Link rendering info here
                     StageCount = 2,
                     PStages = shaderStages,
                     PVertexInputState = &vertexInputInfo,
@@ -222,22 +247,23 @@ public class GraphicsPipeline : IDisposable
                     PViewportState = &viewportState,
                     PRasterizationState = &rasterizer,
                     PMultisampleState = &multisampling,
+                    PDepthStencilState = &depthStencil,
                     PColorBlendState = &colorBlending,
                     Layout = PipelineLayout,
-                    RenderPass = renderPass,
-                    Subpass = 0,
+                    RenderPass = default,  // ✅ NULL - No render pass needed!
+                    Subpass = 0,           // ✅ Ignored with dynamic rendering
                     BasePipelineHandle = default,
                     BasePipelineIndex = -1
                 };
 
                 if (_vk.CreateGraphicsPipelines(_device, default, 1, &pipelineInfo, null, out var pipeline) != Result.Success)
                 {
-                    throw new Exception("Failed to create graphics pipeline");
+                    throw new Exception("Failed to create graphics pipeline with dynamic rendering");
                 }
 
                 _pipeline = pipeline;
 
-                Console.WriteLine("✓ Graphics pipeline created with vertex input state");
+                Console.WriteLine("✓ Graphics pipeline created with dynamic rendering (no render pass)");
             }
             finally
             {
