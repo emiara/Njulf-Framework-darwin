@@ -44,11 +44,16 @@ public class VulkanRenderer : IDisposable
     private Buffer _sceneObjectBuffer;
     private Buffer _sceneMaterialBuffer;
     private Buffer _sceneMeshBuffer;
+    
+    private RenderGraph? _renderGraph;
+    private ImageView _depthImageView;
+    private Buffer _depthBuffer;
+
 
     private uint _frameIndex;
 
     // Phase 2: Scene objects
-    private Dictionary<string, RenderingData.RenderObject> _renderObjects = new();
+    private Dictionary<string, Data.RenderingData.RenderObject> _renderObjects = new();
 
     private SurfaceKHR _surface;
     private uint _currentFrameIndex = 0;
@@ -115,6 +120,13 @@ public class VulkanRenderer : IDisposable
             
             Console.WriteLine($"Swapchain format: {_swapchainManager.SwapchainImageFormat}");
 
+            // Create depth buffer and image view for rendering
+            CreateDepthResources();
+            Console.WriteLine("✓ Depth resources created");
+            
+            // Setup render graph with passes
+            SetupRenderGraph();
+            Console.WriteLine("✓ Render graph initialized");
 
             _commandBufferManager = new CommandBufferManager(
                 _vulkanContext,
@@ -204,9 +216,9 @@ public class VulkanRenderer : IDisposable
             Console.WriteLine("✓ Graphics pipeline created");
 
             // Phase 2: Add test cube to scene
-            var cubeMesh = RenderingData.Mesh.CreateCube();
-            var material = new RenderingData.Material("default", "Shaders/test_vert.spv", "");
-            var cube = new RenderingData.RenderObject("test_cube", cubeMesh, material, Matrix4x4.Identity);
+            var cubeMesh = Data.RenderingData.Mesh.CreateCube();
+            var material = new Data.RenderingData.Material("default", "Shaders/test_vert.spv", "");
+            var cube = new Data.RenderingData.RenderObject("test_cube", cubeMesh, material, Matrix4x4.Identity);
             AddRenderObject(cube);
             Console.WriteLine("✓ Test cube added to scene");
 
@@ -232,7 +244,63 @@ public class VulkanRenderer : IDisposable
             0.1f,
             100f);
     }
+
+    private void CreateDepthResources()
+    {
+        if (_bufferManager == null || _vulkanContext == null)
+            throw new InvalidOperationException("Prerequisites not initialized");
+
+        var extent = _swapchainManager!.SwapchainExtent;
+
+        // Allocate depth buffer (simple storage buffer for now)
+        // In a full implementation, this would be an actual VkImage with depth format
+        const ulong depthSize = 4 * 1024 * 1024;  // 4 MB
     
+        var depthHandle = _bufferManager.AllocateBuffer(
+            depthSize,
+            BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
+            MemoryUsage.AutoPreferDevice);
+    
+        _depthBuffer = _bufferManager.GetBuffer(depthHandle);
+    
+        // For full dynamic rendering with actual depth testing, you'd create a VkImage here:
+        // var depthImageCreateInfo = new ImageCreateInfo { ... Format = Format.D32Sfloat ... };
+        // Then create an ImageView from it
+        // For now, depth attachment can remain default/disabled
+        _depthImageView = default;
+    }
+
+    
+    private void SetupRenderGraph()
+    {
+        if (_vulkanContext == null || _graphicsPipeline == null || _bindlessHeap == null)
+            throw new InvalidOperationException("Prerequisites not initialized");
+
+        _renderGraph = new RenderGraph("MainRenderGraph");
+
+        // Create a single G-Buffer pass for now (can add RT pass later)
+        var gBufferPass = new DynamicRasterPass(
+            vk: _vulkanContext.VulkanApi,
+            device: _vulkanContext.Device,
+            colorAttachment: default,  // Will be set per-frame
+            depthAttachment: _depthImageView,
+            pipeline: _graphicsPipeline,
+            clearColor: new System.Numerics.Vector4(0.1f, 0.1f, 0.1f, 1.0f))
+        {
+            Name = "G-Buffer"
+        };
+
+        _renderGraph.AddPass(gBufferPass);
+
+        // Future: Add reflection pass
+        // var reflectionPass = new DynamicRayTracingPass(...);
+        // _renderGraph.AddPass(reflectionPass);
+
+        // Future: Add composite pass
+        // var compositePass = new DynamicRasterPass(...);
+        // _renderGraph.AddPass(compositePass);
+    }
+
     private void InitializeSceneBuffers()
     {
         if (_bufferManager == null)
@@ -385,7 +453,7 @@ public class VulkanRenderer : IDisposable
     /// <summary>
     /// Add a renderable object to the scene.
     /// </summary>
-    public void AddRenderObject(RenderingData.RenderObject obj)
+    public void AddRenderObject(Data.RenderingData.RenderObject obj)
     {
         if (obj == null)
             throw new ArgumentNullException(nameof(obj));
@@ -408,7 +476,7 @@ public class VulkanRenderer : IDisposable
     /// <summary>
     /// Get a render object by name.
     /// </summary>
-    public RenderingData.RenderObject? GetRenderObject(string name)
+    public Data.RenderingData.RenderObject? GetRenderObject(string name)
     {
         _renderObjects.TryGetValue(name, out var obj);
         return obj;
@@ -428,85 +496,33 @@ public class VulkanRenderer : IDisposable
 
     private unsafe void RecordRenderCommands(CommandBuffer commandBuffer, uint imageIndex, uint frameIndex)
     {
+        if (_renderGraph == null || _swapchainManager == null)
+            throw new InvalidOperationException("RenderGraph not initialized");
+
         var vk = _vulkanContext!.VulkanApi;
-        var colorImageView = _swapchainManager!.SwapchainImageViews[imageIndex];
-        
-        // ✅ DYNAMIC RENDERING: Define attachments inline
-        // Clear color: dark gray (0.1, 0.1, 0.1)
-        var colorAttachment = new RenderingAttachmentInfo
+        var colorImageView = _swapchainManager.SwapchainImageViews[imageIndex];
+
+        // Get visible objects for this frame
+        var visibleObjects = _renderObjects.Values
+            .Where(obj => obj != null && obj.Visible)
+            .ToList();
+
+        // Create render context for passes
+        var context = new RenderGraphContext
         {
-            SType = StructureType.RenderingAttachmentInfo,
-            ImageView = colorImageView,
-            ImageLayout = ImageLayout.ColorAttachmentOptimal,
-            LoadOp = AttachmentLoadOp.Clear,
-            StoreOp = AttachmentStoreOp.Store,
-            ClearValue = new ClearValue 
-            { 
-                Color = new ClearColorValue(0.1f, 0.1f, 0.1f, 1.0f)
-            }
+            Width = _swapchainManager.SwapchainExtent.Width,
+            Height = _swapchainManager.SwapchainExtent.Height,
+            VisibleObjects = visibleObjects,
+            ColorAttachmentView = colorImageView,
+            DepthAttachmentView = _depthImageView,
+            // Optional: Add TLAS reference when ray tracing is integrated
+            // TLAS = _sceneBuilder.GetTLAS()
         };
 
-        // Depth attachment (if needed - optional for now)
-        // var depthAttachment = new RenderingAttachmentInfo
-        // {
-        //     SType = StructureType.RenderingAttachmentInfo,
-        //     ImageView = _depthImageView,
-        //     ImageLayout = ImageLayout.DepthAttachmentOptimal,
-        //     LoadOp = AttachmentLoadOp.Clear,
-        //     StoreOp = AttachmentStoreOp.DontCare,
-        //     ClearValue = new ClearValue { DepthStencil = new ClearDepthStencilValue(1.0f, 0) }
-        // };
-
-        // ✅ Create rendering info (replaces RenderPassBeginInfo + Framebuffer)
-        var renderingInfo = new RenderingInfo
-        {
-            SType = StructureType.RenderingInfo,
-            RenderArea = new Rect2D
-            {
-                Offset = new Offset2D { X = 0, Y = 0 },
-                Extent = _swapchainManager.SwapchainExtent
-            },
-            LayerCount = 1,
-            ColorAttachmentCount = 1,
-            PColorAttachments = &colorAttachment
-            // PDepthAttachment = &depthAttachment,  // Uncomment when depth is needed
-        };
-
-        // ✅ Begin dynamic rendering (NO render pass needed!)
-        vk.CmdBeginRendering(commandBuffer, &renderingInfo);
-
-        // Bind pipeline
-        vk.CmdBindPipeline(commandBuffer, PipelineBindPoint.Graphics, _graphicsPipeline!.Pipeline);
-        
-        // Bind bindless descriptor sets (buffers + textures)
-        var descriptorSets = stackalloc DescriptorSet[2] 
-        { 
-            _bindlessHeap!.BufferSet, 
-            _bindlessHeap!.TextureSet 
-        };
-        vk.CmdBindDescriptorSets(commandBuffer, PipelineBindPoint.Graphics, 
-            _graphicsPipeline!.PipelineLayout, 0, 2, descriptorSets, 0, null);
-        
-        // Phase 2: Render all visible objects
-        foreach (var renderObj in _renderObjects.Values)
-        {
-            if (!renderObj.Visible)
-                continue;
-            
-        
-            // Get mesh GPU data (cached if already uploaded)
-            var meshGpu = _meshManager!.GetOrCreateMeshGpu(renderObj.Mesh);
-        
-            // Bind mesh
-            _meshManager.BindMesh(commandBuffer, meshGpu);
-                
-            // Draw
-            _meshManager.DrawMesh(commandBuffer, meshGpu);
-        }
-        
-        // ✅ End dynamic rendering (replaces vkCmdEndRenderPass)
-        vk.CmdEndRendering(commandBuffer);
+        // Execute all render passes in the graph
+        _renderGraph.Execute(commandBuffer, context);
     }
+
 
     
     private unsafe void SubmitTransferCommandBuffer(CommandBuffer transferCmd, Semaphore transferFinishedSemaphore)
@@ -636,6 +652,7 @@ public class VulkanRenderer : IDisposable
         _synchronizationManager?.Dispose();
         _commandBufferManager?.Dispose();
         _swapchainManager?.Dispose();
+        _renderGraph = null;
 
         if (_vulkanContext != null && _surface.Handle != 0)
         {

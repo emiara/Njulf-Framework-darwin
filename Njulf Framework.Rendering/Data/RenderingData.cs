@@ -90,12 +90,17 @@ public class RenderingData
         public string Name { get; set; }
         public Vertex[] Vertices { get; private set; }
         public uint[] Indices { get; private set; }
+        
+        public Vector3 BoundingBoxMin { get; set; }
+        public Vector3 BoundingBoxMax { get; set; }
 
-        public Mesh(string name, Vertex[] vertices, uint[] indices)
+        public Mesh(string name, Vertex[] vertices, uint[] indices, Vector3 boundingBoxMin, Vector3 boundingBoxMax)
         {
             Name = name;
             Vertices = vertices;
             Indices = indices;
+            BoundingBoxMin = boundingBoxMin;
+            BoundingBoxMax = boundingBoxMax;
         }
 
         /// <summary>
@@ -158,7 +163,7 @@ public class RenderingData
                 20, 23, 22, 22, 21, 20
             };
 
-            return new Mesh("Cube", vertices, indices);
+            return new Mesh("Cube", vertices, indices, new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(0.5f, 0.5f, 0.5f));
         }
     }
     

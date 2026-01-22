@@ -59,11 +59,11 @@ public class DynamicRasterPass : RenderGraphPass
     {
         _extent = new Extent2D(ctx.Width, ctx.Height);
 
-        // Configure color attachment for dynamic rendering
+        // Use color attachment from context
         var colorAttachmentInfo = new RenderingAttachmentInfo
         {
             SType = StructureType.RenderingAttachmentInfo,
-            ImageView = _colorAttachment,
+            ImageView = ctx.ColorAttachmentView,  // ← From context
             ImageLayout = ImageLayout.ColorAttachmentOptimal,
             LoadOp = AttachmentLoadOp.Clear,
             StoreOp = AttachmentStoreOp.Store,
@@ -73,16 +73,16 @@ public class DynamicRasterPass : RenderGraphPass
             }
         };
 
-        // Configure depth attachment for dynamic rendering
+        // Use depth attachment from context (if available)
         RenderingAttachmentInfo depthAttachmentInfo = default;
         RenderingAttachmentInfo* pDepthAttachment = null;
 
-        if (_depthAttachment.Handle != 0)
+        if (ctx.DepthAttachmentView.Handle != 0)  // ← From context
         {
             depthAttachmentInfo = new RenderingAttachmentInfo
             {
                 SType = StructureType.RenderingAttachmentInfo,
-                ImageView = _depthAttachment,
+                ImageView = ctx.DepthAttachmentView,
                 ImageLayout = ImageLayout.DepthAttachmentOptimal,
                 LoadOp = AttachmentLoadOp.Clear,
                 StoreOp = AttachmentStoreOp.DontCare,
@@ -94,7 +94,7 @@ public class DynamicRasterPass : RenderGraphPass
             pDepthAttachment = &depthAttachmentInfo;
         }
 
-        // Create rendering info with inline attachments (NO VkRenderPass)
+        // Rest of the method remains the same...
         var renderingInfo = new RenderingInfo
         {
             SType = StructureType.RenderingInfo,
@@ -109,15 +109,12 @@ public class DynamicRasterPass : RenderGraphPass
             PDepthAttachment = pDepthAttachment
         };
 
-        // Begin dynamic rendering
         _vk.CmdBeginRendering(cmd, &renderingInfo);
 
         try
         {
-            // Bind pipeline
             _vk.CmdBindPipeline(cmd, PipelineBindPoint.Graphics, _pipeline.Pipeline);
 
-            // Set viewport and scissor (if needed for dynamic state)
             var viewport = new Viewport
             {
                 X = 0,
@@ -136,7 +133,6 @@ public class DynamicRasterPass : RenderGraphPass
             };
             _vk.CmdSetScissor(cmd, 0, 1, &scissor);
 
-            // Draw all visible objects from RenderingData
             foreach (var obj in ctx.VisibleObjects)
             {
                 DrawObject(cmd, obj);
@@ -144,16 +140,16 @@ public class DynamicRasterPass : RenderGraphPass
         }
         finally
         {
-            // End dynamic rendering
             _vk.CmdEndRendering(cmd);
         }
     }
+
 
     /// <summary>
     /// Draw a single render object from RenderingData module.
     /// Implement bindless indexing and push constants here.
     /// </summary>
-    private unsafe void DrawObject(CommandBuffer cmd, RenderingData.RenderObject obj)
+    private unsafe void DrawObject(CommandBuffer cmd, Data.RenderingData.RenderObject obj)
     {
         // This is a placeholder implementation.
         // In a full implementation, this would:

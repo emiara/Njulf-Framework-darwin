@@ -78,7 +78,7 @@ public class GraphicsPipeline : IDisposable
                 var bindingDescription = new VertexInputBindingDescription
                 {
                     Binding = 0,
-                    Stride = RenderingData.Vertex.GetSizeInBytes(),
+                    Stride = Data.RenderingData.Vertex.GetSizeInBytes(),
                     InputRate = VertexInputRate.Vertex
                 };
 

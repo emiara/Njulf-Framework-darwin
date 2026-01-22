@@ -1,162 +1,136 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
 using Silk.NET.Vulkan;
-using System;
-using System.Collections.Generic;
 using Njulf_Framework.Rendering.Data;
+using Njulf_Framework.Rendering.Memory;
+using Njulf_Framework.Rendering.Resources.Handles;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace Njulf_Framework.Rendering.Resources;
 
+/// <summary>
+/// Refactored MeshManager using GPU-driven consolidated buffers.
+/// 
+/// Two-phase workflow:
+/// 1. Build phase: Register meshes, call Finalize()
+/// 2. Upload phase: Upload mesh data to GPU via FrameUploadRing
+/// 
+/// Replaces per-mesh vertex/index buffer creation with a single consolidated buffer approach.
+/// </summary>
 public class MeshManager : IDisposable
 {
     private readonly Vk _vk;
     private readonly Device _device;
     private readonly BufferManager _bufferManager;
-    private readonly Dictionary<string, MeshGpuData> _meshCache = new();
-
-    public struct MeshGpuData
-    {
-        public Buffer VertexBuffer;
-        public Buffer IndexBuffer;
-        public DeviceMemory VertexMemory;
-        public DeviceMemory IndexMemory;
-        public uint IndexCount;
-    }
+    
+    private MeshBuffer _meshBuffer;
+    private bool _finalized = false;
+    private HashSet<Data.RenderingData.Mesh> _uploadedMeshes = new();
 
     public MeshManager(Vk vk, Device device, BufferManager bufferManager)
     {
-        _vk = vk;
+        _vk = vk ?? throw new ArgumentNullException(nameof(vk));
         _device = device;
-        _bufferManager = bufferManager;
+        _bufferManager = bufferManager ?? throw new ArgumentNullException(nameof(bufferManager));
+
+        _meshBuffer = new MeshBuffer(bufferManager, vk, device);
     }
 
     /// <summary>
-    /// Upload mesh to GPU or return cached version.
+    /// Register a mesh with the consolidated buffer (before finalization).
     /// </summary>
-    public unsafe MeshGpuData GetOrCreateMeshGpu(RenderingData.Mesh mesh)
+    public void RegisterMesh(Data.RenderingData.Mesh mesh)
     {
-        if (_meshCache.TryGetValue(mesh.Name, out var cached))
-        {
-            return cached;
-        }
+        if (mesh == null)
+            throw new ArgumentNullException(nameof(mesh));
 
-        // Upload vertices
-        fixed (RenderingData.Vertex* verticesPtr = mesh.Vertices)
-        {
-            // Create vertex buffer
-            var vertexBufferSize = (ulong)(mesh.Vertices.Length * sizeof(RenderingData.Vertex));
-            var vertexBuffer = _bufferManager.CreateVertexBuffer(verticesPtr, vertexBufferSize);
+        if (_finalized)
+            throw new InvalidOperationException("MeshManager already finalized. Cannot register new meshes.");
 
-            // Create index buffer
-            fixed (uint* indicesPtr = mesh.Indices)
-            {
-                var indexBuffer = _bufferManager.CreateIndexBuffer(indicesPtr, (uint)mesh.Indices.Length);
-
-                var gpuData = new MeshGpuData
-                {
-                    VertexBuffer = vertexBuffer,
-                    IndexBuffer = indexBuffer,
-                    IndexCount = (uint)mesh.Indices.Length,
-                    VertexMemory = default,
-                    IndexMemory = default
-                };
-
-                _meshCache[mesh.Name] = gpuData;
-                Console.WriteLine($"Uploaded mesh '{mesh.Name}' to GPU: {mesh.Vertices.Length} vertices, {mesh.Indices.Length} indices");
-
-                return gpuData;
-            }
-        }
+        _meshBuffer.AddMesh(mesh);
     }
 
     /// <summary>
-    /// Bind mesh for rendering.
+    /// Finalize the mesh buffer after all meshes are registered.
+    /// Allocates GPU memory for consolidated buffers.
     /// </summary>
-    public unsafe void BindMesh(CommandBuffer commandBuffer, MeshGpuData meshData)
+    public void Finalize()
     {
-        var vertexBuffers = stackalloc Buffer[] { meshData.VertexBuffer };
-        var offsets = stackalloc ulong[] { 0 };
+        if (_finalized)
+            return;
 
-        _vk.CmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-        _vk.CmdBindIndexBuffer(commandBuffer, meshData.IndexBuffer, 0, IndexType.Uint32);
+        _meshBuffer.Finalize();
+        _finalized = true;
+        Console.WriteLine("✓ MeshManager finalized");
     }
 
     /// <summary>
-    /// Draw mesh with index buffer.
+    /// Get or create mesh GPU data (returns cached offset info).
+    /// Call after Finalize().
     /// </summary>
-    public void DrawMesh(CommandBuffer commandBuffer, MeshGpuData meshData)
+    public MeshBuffer.MeshEntry GetOrCreateMeshGpu(Data.RenderingData.Mesh mesh)
     {
-        _vk.CmdDrawIndexed(commandBuffer, meshData.IndexCount, 1, 0, 0, 0);
-    }
+        if (!_finalized)
+            throw new InvalidOperationException("MeshManager not finalized. Call Finalize() first.");
 
-    public unsafe void Dispose()
-    {
-        foreach (var meshData in _meshCache.Values)
-        {
-            _vk.DestroyBuffer(_device, meshData.VertexBuffer, null);
-            _vk.DestroyBuffer(_device, meshData.IndexBuffer, null);
-        }
-        _meshCache.Clear();
-    }
-}
-
-/// <summary>
-/// Manages uniform buffers for transformations.
-/// One UBO per frame in flight.
-/// </summary>
-public class UniformBufferManager : IDisposable
-{
-    private readonly Vk _vk;
-    private readonly Device _device;
-    private readonly BufferManager _bufferManager;
-    private readonly List<BufferManager.BufferAllocation> _uniformBuffers = new();
-
-    public UniformBufferManager(Vk vk, Device device, BufferManager bufferManager, uint framesInFlight)
-    {
-        _vk = vk;
-        _device = device;
-        _bufferManager = bufferManager;
-
-        // Create one UBO per frame
-        for (int i = 0; i < framesInFlight; i++)
-        {
-            var allocation = bufferManager.CreateUniformBuffer(RenderingData.UniformBufferObject.GetSizeInBytes());
-            _uniformBuffers.Add(allocation);
-        }
+        return _meshBuffer.GetMeshEntry(mesh);
     }
 
     /// <summary>
-    /// Update uniform buffer for current frame.
+    /// Upload a single mesh's data to GPU.
+    /// Typically called once per mesh during load phase.
     /// </summary>
-    public unsafe void UpdateUniformBuffer(uint frameIndex, RenderingData.UniformBufferObject ubo)
+    public void UploadMeshToGPU(Data.RenderingData.Mesh mesh, CommandBuffer transferCmd, FrameUploadRing uploadRing)
     {
-        if (frameIndex >= _uniformBuffers.Count)
-            throw new ArgumentOutOfRangeException(nameof(frameIndex));
+        if (!_finalized)
+            throw new InvalidOperationException("MeshManager not finalized");
 
-        var allocation = _uniformBuffers[(int)frameIndex];
+        if (_uploadedMeshes.Contains(mesh))
+            return;  // Already uploaded
 
-        // Map, update, unmap
-        void* data = null;
-        _vk.MapMemory(_device, allocation.Memory, 0, RenderingData.UniformBufferObject.GetSizeInBytes(), MemoryMapFlags.None, &data);
-            
-        // Copy UBO to mapped memory
-        System.Runtime.InteropServices.Marshal.StructureToPtr(ubo, (System.IntPtr)data, false);
-            
-        _vk.UnmapMemory(_device, allocation.Memory);
+        _meshBuffer.UploadMeshData(mesh, transferCmd, uploadRing);
+        _uploadedMeshes.Add(mesh);
     }
 
-    public Silk.NET.Vulkan.Buffer GetUniformBuffer(uint frameIndex)
+    /// <summary>
+    /// Bind consolidated vertex and index buffers.
+    /// </summary>
+    public void BindMeshBuffers(CommandBuffer cmd)
     {
-        if (frameIndex >= _uniformBuffers.Count)
-            throw new ArgumentOutOfRangeException(nameof(frameIndex));
-
-        return _uniformBuffers[(int)frameIndex].Buffer;
+        _meshBuffer.BindBuffers(cmd);
     }
+
+    /// <summary>
+    /// Draw a mesh using consolidated buffers.
+    /// </summary>
+    public void DrawMesh(CommandBuffer cmd, Data.RenderingData.Mesh mesh)
+    {
+        _meshBuffer.DrawMesh(cmd, mesh);
+    }
+
+    /// <summary>
+    /// Get GPU mesh data struct for scene buffer population.
+    /// </summary>
+    public RenderingData.GPUMeshData GetGPUMeshData(Data.RenderingData.Mesh mesh)
+    {
+        return _meshBuffer.GetGPUMeshData(mesh);
+    }
+
+    /// <summary>
+    /// Get consolidated buffers for bindless registration.
+    /// </summary>
+    public (BufferHandle VertexHandle, BufferHandle IndexHandle) GetMeshBufferHandles()
+        => (_meshBuffer.VertexBufferHandle, _meshBuffer.IndexBufferHandle);
+
+    /// <summary>
+    /// Get consolidated buffer objects.
+    /// </summary>
+    public (Buffer VertexBuffer, Buffer IndexBuffer) GetMeshBuffers()
+        => (_meshBuffer.VertexBuffer, _meshBuffer.IndexBuffer);
 
     public void Dispose()
     {
-        // Individual buffers are cleaned up by BufferManager
-        _uniformBuffers.Clear();
-    }  
+        _meshBuffer?.Dispose();
+        _uploadedMeshes.Clear();
+    }
 }

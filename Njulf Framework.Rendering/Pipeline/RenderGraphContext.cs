@@ -30,7 +30,17 @@ public class RenderGraphContext
     /// List of visible render objects for this frame.
     /// Populated after frustum/occlusion culling.
     /// </summary>
-    public List<RenderingData.RenderObject> VisibleObjects { get; set; } = new();
+    public List<Data.RenderingData.RenderObject> VisibleObjects { get; set; } = new();
+    
+    /// <summary>
+    /// Color attachment image view for the current frame.
+    /// </summary>
+    public ImageView ColorAttachmentView { get; set; }
+
+    /// <summary>
+    /// Depth attachment image view (optional).
+    /// </summary>
+    public ImageView DepthAttachmentView { get; set; }
 
     /// <summary>
     /// Top-level acceleration structure for ray tracing passes.
