@@ -6,6 +6,7 @@ using Silk.NET.Vulkan.Extensions.EXT;
 using Silk.NET.Core.Native;
 using Vma;
 using System.Runtime.InteropServices;
+using Silk.NET.GLFW;
 
 namespace Njulf_Framework.Rendering.Core;
 
@@ -174,6 +175,15 @@ public unsafe class VulkanContext : IDisposable
 
         var queueCreateInfos = new List<DeviceQueueCreateInfo>();
         var uniqueQueueFamilies = new HashSet<uint> { _graphicsQueueFamily, _transferQueueFamily };
+        
+        var features13 = new PhysicalDeviceVulkan13Features();
+        var features2 = new PhysicalDeviceFeatures2 { 
+            SType = StructureType.PhysicalDeviceFeatures2,
+            PNext = &features13 
+        };
+        _vk.GetPhysicalDeviceFeatures2(_physicalDevice, &features2);
+
+        Console.WriteLine($"DynamicRendering supported: {features13.DynamicRendering.Value}");
 
         float queuePriority = 1.0f;
         foreach (var queueFamily in uniqueQueueFamilies)
@@ -187,29 +197,21 @@ public unsafe class VulkanContext : IDisposable
             };
             queueCreateInfos.Add(queueCreateInfo);
         }
-
-        var deviceFeatures = new PhysicalDeviceFeatures();
         
         var vulkan13Features = new PhysicalDeviceVulkan13Features()
         {
             SType = StructureType.PhysicalDeviceVulkan13Features,
+            PNext = null,
             DynamicRendering = true,
             Synchronization2 = true,
-            Maintenance4 = true
+            Maintenance4 = true,
+            
         };
-
-        var vulkan12Features = new PhysicalDeviceVulkan12Features()
-        {
-            SType = StructureType.PhysicalDeviceVulkan12Features,
-            PNext = &vulkan13Features,
-            BufferDeviceAddress = true,
-            DescriptorIndexing = true,
-            RuntimeDescriptorArray = true
-        };
-
+        
         var rtPipelineFeatures = new PhysicalDeviceRayTracingPipelineFeaturesKHR()
         {
             SType = StructureType.PhysicalDeviceRayTracingPipelineFeaturesKhr,
+            PNext = &vulkan13Features,
             RayTracingPipeline = true
         };
         
@@ -220,7 +222,30 @@ public unsafe class VulkanContext : IDisposable
             AccelerationStructure = true
         };
         
-        vulkan12Features.PNext = &asFeatures;
+        var robustness2Features = new PhysicalDeviceRobustness2FeaturesEXT
+        {
+            SType = StructureType.PhysicalDeviceRobustness2FeaturesExt,
+            PNext = &asFeatures,
+            NullDescriptor = true
+        };
+
+        var vulkan12Features = new PhysicalDeviceVulkan12Features()
+        {
+            SType = StructureType.PhysicalDeviceVulkan12Features,
+            PNext = &robustness2Features,
+            BufferDeviceAddress = true,
+            DescriptorIndexing = true,
+            RuntimeDescriptorArray = true,
+            DescriptorBindingStorageBufferUpdateAfterBind = true,
+            DescriptorBindingPartiallyBound = true,
+            DescriptorBindingVariableDescriptorCount = true,
+            ShaderStorageBufferArrayNonUniformIndexing = true,
+            DescriptorBindingSampledImageUpdateAfterBind = true,
+            DescriptorBindingUpdateUnusedWhilePending = true,
+            ShaderSampledImageArrayNonUniformIndexing = true
+        };
+        
+        var deviceFeatures = new PhysicalDeviceFeatures();
 
         var extensions = new[]
         {
@@ -228,7 +253,9 @@ public unsafe class VulkanContext : IDisposable
             KhrRayTracingPipeline.ExtensionName,
             KhrAccelerationStructure.ExtensionName,
             KhrDeferredHostOperations.ExtensionName,
-            KhrSynchronization2.ExtensionName
+            KhrSynchronization2.ExtensionName,
+            KhrDynamicRendering.ExtensionName,
+            
         };
         var extensionPtrs = new List<IntPtr>();
         foreach (var ext in extensions)

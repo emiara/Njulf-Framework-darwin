@@ -27,11 +27,11 @@ public class GraphicsPipeline : IDisposable
         Device device,
         RenderPass renderPass,  // DEPRECATED - kept for compatibility, ignored in dynamic rendering
         Extent2D swapchainExtent,
-        DescriptorSetLayout descriptorSetLayout,
+        DescriptorSetLayout[] descriptorSetLayouts,
         Format colorFormat = Format.B8G8R8A8Unorm,
         Format depthFormat = Format.D32Sfloat,
-        string vertShaderPath = "Shaders/vertex.glsl",
-        string fragShaderPath = "Shaders/fragment.glsl")
+        string vertShaderPath = "Shaders/vertex.vert",
+        string fragShaderPath = "Shaders/fragment.frag")
     {
         _vk = vk;
         _device = device;
@@ -129,29 +129,37 @@ public class GraphicsPipeline : IDisposable
                 };
 
                 // Viewport and scissor
-                var viewport = new Viewport
-                {
-                    X = 0,
-                    Y = 0,
-                    Width = swapchainExtent.Width,
-                    Height = swapchainExtent.Height,
-                    MinDepth = 0.0f,
-                    MaxDepth = 1.0f
-                };
+                // var viewport = new Viewport
+                // {
+                //     X = 0,
+                //     Y = 0,
+                //     Width = swapchainExtent.Width,
+                //     Height = swapchainExtent.Height,
+                //     MinDepth = 0.0f,
+                //     MaxDepth = 1.0f
+                // };
 
-                var scissor = new Rect2D
-                {
-                    Offset = new Offset2D { X = 0, Y = 0 },
-                    Extent = swapchainExtent
-                };
+                // var scissor = new Rect2D
+                // {
+                //     Offset = new Offset2D { X = 0, Y = 0 },
+                //     Extent = swapchainExtent
+                // };
 
                 var viewportState = new PipelineViewportStateCreateInfo
                 {
                     SType = StructureType.PipelineViewportStateCreateInfo,
                     ViewportCount = 1,
-                    PViewports = &viewport,
+                    PViewports = null,  // ← NULL: Will be set dynamically
                     ScissorCount = 1,
-                    PScissors = &scissor
+                    PScissors = null    // ← NULL: Will be set dynamically
+                };
+                
+                var dynamicStates = stackalloc DynamicState[] { DynamicState.Viewport, DynamicState.Scissor };
+                var dynamicStateInfo = new PipelineDynamicStateCreateInfo
+                {
+                    SType = StructureType.PipelineDynamicStateCreateInfo,
+                    DynamicStateCount = 2,
+                    PDynamicStates = dynamicStates
                 };
 
                 // Rasterizer
@@ -209,19 +217,33 @@ public class GraphicsPipeline : IDisposable
                 };
 
                 // Pipeline layout (for descriptors/uniforms)
-                var pipelineLayoutInfo = new PipelineLayoutCreateInfo
+                fixed (DescriptorSetLayout* layoutsPtr = descriptorSetLayouts)
                 {
-                    SType = StructureType.PipelineLayoutCreateInfo,
-                    SetLayoutCount = 1,
-                    PSetLayouts = &descriptorSetLayout
-                };
+                    // Define push constant range for vertex shader
+                    var pushConstantRange = new PushConstantRange
+                    {
+                        StageFlags = ShaderStageFlags.VertexBit | ShaderStageFlags.FragmentBit,
+                        Offset = 0,
+                        Size = (uint)sizeof(Data.RenderingData.PushConstants) 
+                    };
+                    
+                    var pipelineLayoutInfo = new PipelineLayoutCreateInfo
+                    {
+                        SType = StructureType.PipelineLayoutCreateInfo,
+                        SetLayoutCount = (uint)descriptorSetLayouts.Length,
+                        PSetLayouts = layoutsPtr,
+                        PushConstantRangeCount = 1,
+                        PPushConstantRanges = &pushConstantRange
+                    };
 
-                if (_vk.CreatePipelineLayout(_device, &pipelineLayoutInfo, null, out PipelineLayout) != Result.Success)
-                {
-                    throw new Exception("Failed to create pipeline layout");
+                    if (vk.CreatePipelineLayout(device, pipelineLayoutInfo, null, out PipelineLayout) 
+                        != Result.Success)
+                    {
+                        throw new Exception("Failed to create pipeline layout");
+                    }
                 }
-
-                // ✅ DYNAMIC RENDERING: Create VkPipelineRenderingCreateInfo
+                
+                
                 // This replaces VkRenderPass and VkFramebuffer in the pipeline creation
                 var colorAttachmentFormat = _colorFormat;
                 var depthAttachmentFormat = _depthFormat;
@@ -239,7 +261,7 @@ public class GraphicsPipeline : IDisposable
                 var pipelineInfo = new GraphicsPipelineCreateInfo
                 {
                     SType = StructureType.GraphicsPipelineCreateInfo,
-                    PNext = &pipelineRenderingInfo,  // ✅ Link rendering info here
+                    PNext = &pipelineRenderingInfo,
                     StageCount = 2,
                     PStages = shaderStages,
                     PVertexInputState = &vertexInputInfo,
@@ -249,9 +271,10 @@ public class GraphicsPipeline : IDisposable
                     PMultisampleState = &multisampling,
                     PDepthStencilState = &depthStencil,
                     PColorBlendState = &colorBlending,
+                    PDynamicState = &dynamicStateInfo,
                     Layout = PipelineLayout,
-                    RenderPass = default,  // ✅ NULL - No render pass needed!
-                    Subpass = 0,           // ✅ Ignored with dynamic rendering
+                    RenderPass = default,
+                    Subpass = 0,
                     BasePipelineHandle = default,
                     BasePipelineIndex = -1
                 };

@@ -16,22 +16,23 @@ using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace Njulf_Framework.Rendering;
 
-public class VulkanRenderer : IDisposable
+public unsafe class VulkanRenderer : IDisposable
 {
     private readonly IWindow _window;
-    private Core.VulkanContext? _vulkanContext;
-    private Core.SwapchainManager? _swapchainManager;
-    private Core.CommandBufferManager? _commandBufferManager;
-    private Core.SynchronizationManager? _synchronizationManager;
+    private readonly VulkanContext? _vulkanContext;
+    private SwapchainManager? _swapchainManager;
+    private CommandBufferManager? _commandBufferManager;
+    private SynchronizationManager? _synchronizationManager;
     private RenderPassManager? _renderPassManager;
     private FramebufferManager? _framebufferManager;
     private GraphicsPipeline? _graphicsPipeline;
+    private GraphicsPipeline? _forwardPlusPipeline;
     
     private KhrSwapchain? _khrSwapchain;
     private KhrSurface? _khrSurface;
 
     // Phase 2: Resource managers
-    private BufferManager? _bufferManager;
+    private readonly BufferManager? _bufferManager;
     private MeshManager? _meshManager;
     private DescriptorManager? _descriptorManager;
     
@@ -48,8 +49,14 @@ public class VulkanRenderer : IDisposable
     private RenderGraph? _renderGraph;
     private ImageView _depthImageView;
     private Buffer _depthBuffer;
+    private Image _depthImage;
+    private Allocation* _depthAllocation;
+ 
 
-
+    // Phase 3.5: Forward+ lighting
+    private LightManager? _lightManager;
+    private TiledLightCullingPass? _tiledLightCullingPass;
+    
     private uint _frameIndex;
 
     // Phase 2: Scene objects
@@ -69,8 +76,10 @@ public class VulkanRenderer : IDisposable
 
     public VulkanContext VulkanContext => _vulkanContext!;
     public Core.SwapchainManager SwapchainManager => _swapchainManager!;
+    
+    public LightManager? LightManager => _lightManager;
 
-    public unsafe VulkanRenderer(IWindow window)
+    public VulkanRenderer(IWindow window)
     {
         _window = window ?? throw new ArgumentNullException(nameof(window));
         
@@ -85,7 +94,7 @@ public class VulkanRenderer : IDisposable
     /// <summary>
     /// Initialize the renderer. Called once at startup.
     /// </summary>
-    public unsafe void Load()
+    public void Load()
     {
         try
         {
@@ -123,10 +132,6 @@ public class VulkanRenderer : IDisposable
             // Create depth buffer and image view for rendering
             CreateDepthResources();
             Console.WriteLine("✓ Depth resources created");
-            
-            // Setup render graph with passes
-            SetupRenderGraph();
-            Console.WriteLine("✓ Render graph initialized");
 
             _commandBufferManager = new CommandBufferManager(
                 _vulkanContext,
@@ -183,7 +188,8 @@ public class VulkanRenderer : IDisposable
             // Create bindless descriptor layouts
             _descriptorSetLayouts = new DescriptorSetLayouts(
                 _vulkanContext.VulkanApi,
-                _vulkanContext.Device);
+                _vulkanContext.Device,
+                _vulkanContext.PhysicalDevice);
             Console.WriteLine("✓ Bindless descriptor layouts created");
 
             // Create bindless descriptor heap
@@ -192,6 +198,8 @@ public class VulkanRenderer : IDisposable
                 _vulkanContext.Device,
                 _descriptorSetLayouts);
             Console.WriteLine("✓ Bindless descriptor heap created");
+            
+            InitializeSceneBuffers();
 
             // Register scene buffers in bindless heap
             _bindlessHeap.UpdateBuffer(0, _sceneObjectBuffer, 16 * 1024 * 1024);   // Object buffer index 0
@@ -212,8 +220,49 @@ public class VulkanRenderer : IDisposable
                 _vulkanContext.Device,
                 _renderPassManager.RenderPass,
                 _swapchainManager.SwapchainExtent,
-                _descriptorManager.DescriptorSetLayout);
+                new[]  // ✅ Array of 2 layouts
+                {
+                    _descriptorSetLayouts.BufferHeapLayout,   // Set 0
+                    _descriptorSetLayouts.TextureHeapLayout   // Set 1
+                });
             Console.WriteLine("✓ Graphics pipeline created");
+            
+            _forwardPlusPipeline = new GraphicsPipeline(
+                _vulkanContext.VulkanApi,
+                _vulkanContext.Device, 
+                _renderPassManager.RenderPass, 
+                _swapchainManager.SwapchainExtent, 
+                new[]  // ✅ Array of 2 layouts
+                {
+                    _descriptorSetLayouts.BufferHeapLayout,   // Set 0
+                    _descriptorSetLayouts.TextureHeapLayout   // Set 1
+                },
+                _swapchainManager.SwapchainImageFormat, Format.D32Sfloat,
+                "Shaders/vertex.vert",           // ← Same vertex shader
+                "Shaders/forward_plus.frag"); 
+            
+            // Phase 3.5: Initialize light manager
+            _lightManager = new LightManager(
+                _vulkanContext.VulkanApi,
+                _vulkanContext.Device,
+                _bufferManager,
+                _bindlessHeap);
+            Console.WriteLine("✓ Light manager initialized");
+
+            // Phase 3.5: Initialize tiled light culling pass
+            _tiledLightCullingPass = new TiledLightCullingPass(
+                "Tiled Light Culling",
+                _vulkanContext.VulkanApi,
+                _vulkanContext.Device,
+                _lightManager,
+                _bufferManager,
+                _descriptorSetLayouts,
+                _bindlessHeap);
+            Console.WriteLine("✓ Tiled light culling pass initialized");
+            
+            // Setup render graph with passes
+            SetupRenderGraph();
+            Console.WriteLine("✓ Render graph initialized");
 
             // Phase 2: Add test cube to scene
             var cubeMesh = Data.RenderingData.Mesh.CreateCube();
@@ -221,6 +270,9 @@ public class VulkanRenderer : IDisposable
             var cube = new Data.RenderingData.RenderObject("test_cube", cubeMesh, material, Matrix4x4.Identity);
             AddRenderObject(cube);
             Console.WriteLine("✓ Test cube added to scene");
+            
+            _meshManager.Finalize();
+            Console.WriteLine("✓ Mesh manager finalized");
 
             System.Diagnostics.Debug.WriteLine("Vulkan renderer initialized successfully");
             Console.WriteLine("\n✓ Renderer fully initialized - rendering started!\n");
@@ -236,8 +288,6 @@ public class VulkanRenderer : IDisposable
             throw;
         }
         
-        InitializeSceneBuffers();
-        
         _projectionMatrix = Matrix4x4.CreatePerspectiveFieldOfView(
             MathF.PI / 4,
             _window.Size.X / (float)_window.Size.Y,
@@ -252,24 +302,62 @@ public class VulkanRenderer : IDisposable
 
         var extent = _swapchainManager!.SwapchainExtent;
 
-        // Allocate depth buffer (simple storage buffer for now)
-        // In a full implementation, this would be an actual VkImage with depth format
-        const ulong depthSize = 4 * 1024 * 1024;  // 4 MB
-    
-        var depthHandle = _bufferManager.AllocateBuffer(
-            depthSize,
-            BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
-            MemoryUsage.AutoPreferDevice);
-    
-        _depthBuffer = _bufferManager.GetBuffer(depthHandle);
-    
-        // For full dynamic rendering with actual depth testing, you'd create a VkImage here:
-        // var depthImageCreateInfo = new ImageCreateInfo { ... Format = Format.D32Sfloat ... };
-        // Then create an ImageView from it
-        // For now, depth attachment can remain default/disabled
-        _depthImageView = default;
-    }
+        var imageInfo = new ImageCreateInfo
+        {
+            SType = StructureType.ImageCreateInfo,
+            ImageType = ImageType.Type2D,
+            Format = Format.D32Sfloat,
+            Extent = new Extent3D(extent.Width, extent.Height, 1),
+            MipLevels = 1,
+            ArrayLayers = 1,
+            Samples = SampleCountFlags.Count1Bit,
+            Tiling = ImageTiling.Optimal,
+            Usage = ImageUsageFlags.DepthStencilAttachmentBit,
+            SharingMode = SharingMode.Exclusive,
+            InitialLayout = ImageLayout.Undefined
+        };
 
+        var allocInfo = new AllocationCreateInfo
+        {
+            Usage = MemoryUsage.AutoPreferDevice
+        };
+
+        Image image;
+        Allocation* allocation;
+        AllocationInfo allocationInfo;
+
+        var result = Apis.CreateImage(
+            _vulkanContext.VmaAllocator,
+            &imageInfo,
+            &allocInfo,
+            &image,
+            &allocation,
+            &allocationInfo);
+
+        if (result != Result.Success)
+            throw new InvalidOperationException($"Failed to allocate depth image: {result}");
+
+        _depthImage = image;
+        _depthAllocation = allocation;
+        
+        var viewInfo = new ImageViewCreateInfo
+        {
+            SType = StructureType.ImageViewCreateInfo,
+            Image = _depthImage,
+            ViewType = ImageViewType.Type2D,
+            Format = Format.D32Sfloat,
+            SubresourceRange = new ImageSubresourceRange
+            {
+                AspectMask = ImageAspectFlags.DepthBit,
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            }
+        };
+
+        _vulkanContext.VulkanApi.CreateImageView(_vulkanContext.Device, &viewInfo, null, out _depthImageView);
+    }
     
     private void SetupRenderGraph()
     {
@@ -277,20 +365,41 @@ public class VulkanRenderer : IDisposable
             throw new InvalidOperationException("Prerequisites not initialized");
 
         _renderGraph = new RenderGraph("MainRenderGraph");
+        
+        // Stage 1: Tiled light culling (compute shader)
+        // This runs once per frame and outputs per-tile light lists
+        if (_tiledLightCullingPass != null)
+        {
+            _renderGraph.AddPass(_tiledLightCullingPass);
+            Console.WriteLine("  └─ Added: Tiled Light Culling (compute)");
+        }
+        
+        // Stage 2: Forward+ raster pass
+        // Fragment shader reads per-tile light lists and shades accordingly
+        var rasterPass = new DynamicRasterPass(
+            _vulkanContext!.VulkanApi,
+            _vulkanContext!.Device,
+            _swapchainManager!.SwapchainImageViews[0],  // Color: swapchain
+            default,                                     // Depth: none
+            _forwardPlusPipeline!,                          // Pipeline: forward+ shading
+            new Vector4(0.1f, 0.1f, 0.1f, 1.0f)); 
+        _renderGraph.AddPass(rasterPass);
+        Console.WriteLine("  └─ Added: Forward+ Shading (raster)");
+
+        Console.WriteLine($"✓ Render graph setup with {_renderGraph.PassCount} pass(es)");
 
         // Create a single G-Buffer pass for now (can add RT pass later)
-        var gBufferPass = new DynamicRasterPass(
-            vk: _vulkanContext.VulkanApi,
-            device: _vulkanContext.Device,
-            colorAttachment: default,  // Will be set per-frame
-            depthAttachment: _depthImageView,
-            pipeline: _graphicsPipeline,
-            clearColor: new System.Numerics.Vector4(0.1f, 0.1f, 0.1f, 1.0f))
-        {
-            Name = "G-Buffer"
-        };
-
-        _renderGraph.AddPass(gBufferPass);
+        // var gBufferPass = new DynamicRasterPass(
+        //     vk: _vulkanContext.VulkanApi,
+        //     device: _vulkanContext.Device,
+        //     colorAttachment: default,  // Will be set per-frame
+        //     depthAttachment: _depthImageView,
+        //     pipeline: _graphicsPipeline,
+        //     clearColor: new Vector4(0.1f, 0.1f, 0.1f, 1.0f))
+        // {
+        //     Name = "G-Buffer"
+        // };
+        // _renderGraph.AddPass(gBufferPass);
 
         // Future: Add reflection pass
         // var reflectionPass = new DynamicRayTracingPass(...);
@@ -347,12 +456,23 @@ public class VulkanRenderer : IDisposable
             var rotation = Matrix4x4.CreateRotationY((float)deltaTime);
             cube.Transform = rotation * cube.Transform;
         }
+        
+        // Add test lights (temporary - for demonstration)
+        if (_frameIndex == 0 && _lightManager != null)
+        {
+            _lightManager.AddPointLight(new Vector3(5, 3, 0), 10, new Vector3(1, 1, 1), 1.0f);
+            _lightManager.AddPointLight(new Vector3(-5, 3, 0), 10, new Vector3(1, 0, 0), 0.5f);
+            _lightManager.AddPointLight(new Vector3(0, 3, 5), 10, new Vector3(0, 1, 0), 0.5f);
+            Console.WriteLine("✓ Test lights added to scene");
+
+            _frameIndex++;
+        }
     }
 
     /// <summary>
     /// Render logic. Called once per frame.
     /// </summary>
-    public unsafe void Draw()
+    public void Draw()
     {
         if (_vulkanContext == null || _swapchainManager == null || 
             _commandBufferManager == null || _synchronizationManager == null ||
@@ -410,6 +530,9 @@ public class VulkanRenderer : IDisposable
             }
         }
         
+        // Phase 3.5: CPU light update (before GPU upload)
+        _lightManager?.ClearLights();
+        
         var transferCommandBuffer = _commandBufferManager.TransferCommandBuffers[frameIndex];
         _commandBufferManager.ResetCommandBuffer(transferCommandBuffer);
         _commandBufferManager.BeginRecording(transferCommandBuffer);
@@ -421,6 +544,9 @@ public class VulkanRenderer : IDisposable
             _sceneObjectBuffer,
             _sceneMaterialBuffer,
             _sceneMeshBuffer);
+        
+        // Phase 3.5: Upload lights
+        _lightManager?.UploadToGPU(transferCommandBuffer, _frameUploadRing);
 
         _commandBufferManager.EndRecording(transferCommandBuffer);
 
@@ -432,6 +558,23 @@ public class VulkanRenderer : IDisposable
         var commandBuffer = _commandBufferManager.CommandBuffers[frameIndex];
         _commandBufferManager.ResetCommandBuffer(commandBuffer);
         _commandBufferManager.BeginRecording(commandBuffer);
+        
+        var rgContext = new RenderGraphContext(
+            _swapchainManager.SwapchainExtent.Width,
+            _swapchainManager.SwapchainExtent.Height,
+            _bindlessHeap)
+        {
+            ColorAttachmentView = _swapchainManager.SwapchainImageViews[imageIndex],
+            DepthAttachmentView = _depthImageView,
+            FrameIndex = frameIndex,
+            VisibleObjects = _renderObjects.Values.Where(o => o.Visible).ToList(),
+            ViewProjection = _viewMatrix * _projectionMatrix,
+            CameraPosition = new Vector3(0, 2, 3),
+            BindlessHeap = _bindlessHeap,
+            MeshManager = _meshManager
+        };
+
+        _renderGraph?.Execute(commandBuffer, rgContext);
 
         RecordRenderCommands(commandBuffer, imageIndex, frameIndex);
 
@@ -459,6 +602,12 @@ public class VulkanRenderer : IDisposable
             throw new ArgumentNullException(nameof(obj));
 
         _renderObjects[obj.Name] = obj;
+        
+        if (_meshManager != null)
+        {
+            _meshManager.RegisterMesh(obj.Mesh);
+        }
+        
         Console.WriteLine($"Added render object: {obj.Name}");
     }
 
@@ -482,7 +631,7 @@ public class VulkanRenderer : IDisposable
         return obj;
     }
 
-    private unsafe SurfaceKHR CreateSurface()
+    private SurfaceKHR CreateSurface()
     {
         SurfaceKHR surface = new SurfaceKHR();
         
@@ -494,38 +643,161 @@ public class VulkanRenderer : IDisposable
         return surface;
     }
 
-    private unsafe void RecordRenderCommands(CommandBuffer commandBuffer, uint imageIndex, uint frameIndex)
+    private void RecordRenderCommands(CommandBuffer commandBuffer, uint imageIndex, uint frameIndex)
     {
-        if (_renderGraph == null || _swapchainManager == null)
-            throw new InvalidOperationException("RenderGraph not initialized");
-
-        var vk = _vulkanContext!.VulkanApi;
-        var colorImageView = _swapchainManager.SwapchainImageViews[imageIndex];
-
-        // Get visible objects for this frame
-        var visibleObjects = _renderObjects.Values
-            .Where(obj => obj != null && obj.Visible)
-            .ToList();
-
-        // Create render context for passes
-        var context = new RenderGraphContext
+        if (_renderGraph == null || _swapchainManager == null || _forwardPlusPipeline == null || _bindlessHeap == null)
+            throw new InvalidOperationException("RenderGraph, SwapchainManager, Pipeline, or BindlessHeap not initialized");
+        
+        Vk _vk = _vulkanContext.VulkanApi;
+        
+        // Get the swapchain image for layout transition
+        var swapchainImage = _swapchainManager.SwapchainImages[imageIndex];
+    
+        // Transition: UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL
+        TransitionImageLayout(commandBuffer, swapchainImage, 
+            ImageLayout.Undefined, ImageLayout.ColorAttachmentOptimal);
+        
+        // Build render context
+        var context = new RenderGraphContext(
+            _swapchainManager.SwapchainExtent.Width,
+            _swapchainManager.SwapchainExtent.Height,
+            _bindlessHeap)
         {
             Width = _swapchainManager.SwapchainExtent.Width,
             Height = _swapchainManager.SwapchainExtent.Height,
-            VisibleObjects = visibleObjects,
-            ColorAttachmentView = colorImageView,
-            DepthAttachmentView = _depthImageView,
-            // Optional: Add TLAS reference when ray tracing is integrated
-            // TLAS = _sceneBuilder.GetTLAS()
+            FrameIndex = frameIndex,
+            VisibleObjects = _renderObjects.Values
+                .Where(obj => obj != null && obj.Visible)
+                .ToList(),
+            ViewProjection = _viewMatrix * _projectionMatrix,
+            CameraPosition = new Vector3(0, 2, 3),
+            BindlessHeap = _bindlessHeap,
+            MeshManager = _meshManager
         };
 
-        // Execute all render passes in the graph
-        _renderGraph.Execute(commandBuffer, context);
+        // Get the swapchain image view for this frame
+        var colorImageView = _swapchainManager.SwapchainImageViews[imageIndex];
+        if (colorImageView.Handle == 0)
+            throw new InvalidOperationException($"Failed to get swapchain image view for index {imageIndex}");
+
+        // Define color attachment (swapchain image)
+        var colorAttachment = new RenderingAttachmentInfo
+        {
+            SType = StructureType.RenderingAttachmentInfo,
+            ImageView = colorImageView,
+            ImageLayout = ImageLayout.ColorAttachmentOptimal,
+            LoadOp = AttachmentLoadOp.Clear,
+            StoreOp = AttachmentStoreOp.Store,
+            ClearValue = new ClearValue { Color = new ClearColorValue(0.1f, 0.1f, 0.1f, 1.0f) }
+        };
+
+        // Define depth attachment (if you have one)
+        RenderingAttachmentInfo* depthAttachment = null;
+        RenderingAttachmentInfo depthAttachmentInfo = default;
+        if (_depthImageView.Handle != 0)
+        {
+            depthAttachmentInfo = new RenderingAttachmentInfo
+            {
+                SType = StructureType.RenderingAttachmentInfo,
+                ImageView = _depthImageView,
+                ImageLayout = ImageLayout.DepthAttachmentOptimal,
+                LoadOp = AttachmentLoadOp.Clear,
+                StoreOp = AttachmentStoreOp.DontCare,
+                ClearValue = new ClearValue { DepthStencil = new ClearDepthStencilValue(1.0f, 0) }
+            };
+            depthAttachment = &depthAttachmentInfo;
+        }
+
+        // Begin dynamic rendering
+        var renderingInfo = new RenderingInfo
+        {
+            SType = StructureType.RenderingInfo,
+            RenderArea = new Rect2D
+            {
+                Offset = new Offset2D(0, 0),
+                Extent = _swapchainManager.SwapchainExtent
+            },
+            LayerCount = 1,
+            ColorAttachmentCount = 1,
+            PColorAttachments = &colorAttachment,
+            PDepthAttachment = depthAttachment
+        };
+
+        _vk.CmdBeginRendering(commandBuffer, &renderingInfo);
+
+        // Bind graphics pipeline
+        _vk.CmdBindPipeline(commandBuffer, PipelineBindPoint.Graphics, _forwardPlusPipeline.Pipeline);
+
+        // Bind descriptor sets (set 0 = buffers, set 1 = textures)
+        var descriptorSets = stackalloc DescriptorSet[]
+        {
+            _bindlessHeap.BufferSet,
+            _bindlessHeap.TextureSet
+        };
+        _vk.CmdBindDescriptorSets(commandBuffer, PipelineBindPoint.Graphics, _forwardPlusPipeline.PipelineLayout,
+                                  0, 2, descriptorSets, 0, null);
+
+        // Set viewport
+        var viewport = new Viewport
+        {
+            X = 0,
+            Y = 0,
+            Width = _swapchainManager.SwapchainExtent.Width,
+            Height = _swapchainManager.SwapchainExtent.Height,
+            MinDepth = 0,
+            MaxDepth = 1
+        };
+        _vk.CmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+        // Set scissor
+        var scissor = new Rect2D
+        {
+            Offset = new Offset2D(0, 0),
+            Extent = _swapchainManager.SwapchainExtent
+        };
+        _vk.CmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+        // Draw all visible objects
+        _meshManager.BindMeshBuffers(commandBuffer);
+
+        // Draw all visible objects
+        foreach (var renderObject in context.VisibleObjects)
+        {
+            if (renderObject?.Mesh == null)
+                continue;
+
+            var mesh = renderObject.Mesh;
+
+            // ✅ Use PushConstants from RenderingData
+            var pushConstants = new Data.RenderingData.PushConstants
+            {
+                Model = renderObject.Transform,
+                View = _viewMatrix,
+                Projection = _projectionMatrix,
+                MaterialIndex = 0,
+                MeshIndex = 0,
+                InstanceIndex = 0,
+                Padding = 0
+            };
+
+            _vk.CmdPushConstants(commandBuffer, _forwardPlusPipeline.PipelineLayout, ShaderStageFlags.VertexBit | ShaderStageFlags.FragmentBit,
+                0, (uint)sizeof(Data.RenderingData.PushConstants), &pushConstants);
+
+            _meshManager.DrawMesh(commandBuffer, mesh);
+        }
+
+        // End dynamic rendering
+        _vk.CmdEndRendering(commandBuffer);
+        
+        // Transition: COLOR_ATTACHMENT_OPTIMAL -> PRESENT_SRC_KHR
+        TransitionImageLayout(commandBuffer, swapchainImage,
+            ImageLayout.ColorAttachmentOptimal, ImageLayout.PresentSrcKhr);
     }
 
 
+
     
-    private unsafe void SubmitTransferCommandBuffer(CommandBuffer transferCmd, Semaphore transferFinishedSemaphore)
+    private void SubmitTransferCommandBuffer(CommandBuffer transferCmd, Semaphore transferFinishedSemaphore)
     {
         var vk = _vulkanContext.VulkanApi;
         var transferQueue = _vulkanContext.TransferQueue;
@@ -544,7 +816,7 @@ public class VulkanRenderer : IDisposable
             throw new Exception($"Transfer queue submit failed: {result}");
     }
 
-    private unsafe void SubmitCommandBuffer(Queue queue, CommandBuffer commandBuffer,
+    private void SubmitCommandBuffer(Queue queue, CommandBuffer commandBuffer,
         Semaphore waitImageReadySemaphore, Semaphore waitTransferFinishedSemaphore, Semaphore signalRenderSemaphore, Fence fence)
     {
         var vk = _vulkanContext!.VulkanApi;
@@ -579,7 +851,7 @@ public class VulkanRenderer : IDisposable
         }
     }
 
-    private unsafe void PresentFrame(uint imageIndex, Semaphore renderFinishedSemaphore)
+    private void PresentFrame(uint imageIndex, Semaphore renderFinishedSemaphore)
     {
         var vk = _vulkanContext!.VulkanApi;
         var swapchain = _swapchainManager!.Swapchain;
@@ -630,8 +902,57 @@ public class VulkanRenderer : IDisposable
             _swapchainManager.SwapchainImageViews,
             _swapchainManager.SwapchainExtent);
     }
+    
+    private void TransitionImageLayout(CommandBuffer commandBuffer, Image image, 
+        ImageLayout oldLayout, ImageLayout newLayout)
+    {
+        var vk = _vulkanContext!.VulkanApi;
 
-    public unsafe void Dispose()
+        var barrier = new ImageMemoryBarrier
+        {
+            SType = StructureType.ImageMemoryBarrier,
+            OldLayout = oldLayout,
+            NewLayout = newLayout,
+            SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+            DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+            Image = image,
+            SubresourceRange = new ImageSubresourceRange
+            {
+                AspectMask = ImageAspectFlags.ColorBit,
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            }
+        };
+
+        PipelineStageFlags sourceStage;
+        PipelineStageFlags destinationStage;
+
+        if (oldLayout == ImageLayout.Undefined && newLayout == ImageLayout.ColorAttachmentOptimal)
+        {
+            barrier.SrcAccessMask = 0;
+            barrier.DstAccessMask = AccessFlags.ColorAttachmentWriteBit;
+            sourceStage = PipelineStageFlags.TopOfPipeBit;
+            destinationStage = PipelineStageFlags.ColorAttachmentOutputBit;
+        }
+        else if (oldLayout == ImageLayout.ColorAttachmentOptimal && newLayout == ImageLayout.PresentSrcKhr)
+        {
+            barrier.SrcAccessMask = AccessFlags.ColorAttachmentWriteBit;
+            barrier.DstAccessMask = 0;
+            sourceStage = PipelineStageFlags.ColorAttachmentOutputBit;
+            destinationStage = PipelineStageFlags.BottomOfPipeBit;
+        }
+        else
+        {
+            throw new ArgumentException("Unsupported layout transition");
+        }
+
+        vk.CmdPipelineBarrier(commandBuffer, sourceStage, destinationStage, 0, 
+            0, null, 0, null, 1, &barrier);
+    }
+
+    public void Dispose()
     {
         if (_vulkanContext != null)
         {
@@ -642,6 +963,8 @@ public class VulkanRenderer : IDisposable
         _descriptorManager?.Dispose();
         _meshManager?.Dispose();
         _bufferManager?.Dispose();
+        _lightManager?.Dispose();
+        _tiledLightCullingPass?.Dispose();
         
         _bindlessHeap?.Dispose();
         _descriptorSetLayouts?.Dispose();
@@ -653,6 +976,11 @@ public class VulkanRenderer : IDisposable
         _commandBufferManager?.Dispose();
         _swapchainManager?.Dispose();
         _renderGraph = null;
+        
+        if (_depthImageView.Handle != 0)
+            _vulkanContext.VulkanApi.DestroyImageView(_vulkanContext.Device, _depthImageView, null);
+        if (_depthImage.Handle != 0)
+            Apis.DestroyImage(_vulkanContext.VmaAllocator, _depthImage, null);
 
         if (_vulkanContext != null && _surface.Handle != 0)
         {

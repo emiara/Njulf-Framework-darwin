@@ -1,6 +1,7 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
 using System.Numerics;
+using System.Runtime.InteropServices;
 
 namespace Njulf_Framework.Rendering.Data;
 
@@ -185,5 +186,18 @@ public class RenderingData
             Material = material;
             Transform = transform == default ? Matrix4x4.Identity : transform;
         }
+    }
+    
+    [StructLayout(LayoutKind.Sequential)]
+    public struct PushConstants
+    {
+        public Matrix4x4 Model;        // 64 bytes
+        public Matrix4x4 View;         // 64 bytes
+        public Matrix4x4 Projection;   // 64 bytes
+
+        public uint MaterialIndex;     // 4 bytes
+        public uint MeshIndex;         // 4 bytes
+        public uint InstanceIndex;     // 4 bytes
+        public uint Padding;           // 4 bytes (align to 16)
     }
 }

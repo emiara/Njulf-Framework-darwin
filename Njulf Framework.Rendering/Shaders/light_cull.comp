@@ -1,0 +1,125 @@
+#version 460 core
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstants {
+    uint screenWidth;
+    uint screenHeight;
+    uint lightCount;
+    uint tileSize;
+    uint lightBufferIdx;      // Index into bindless buffer heap
+    uint headerBufferIdx;     // Index into bindless buffer heap
+    uint indicesBufferIdx;    // Index into bindless buffer heap
+} pc;
+
+
+layout(set = 0, binding = 0) buffer StorageBuffers {
+    vec4 data[];
+} buffers[65536];
+
+
+struct GPULight {
+    vec4 positionRadius;    // xyz = position, w = radius
+    vec4 colorIntensity;    // xyz = color, w = intensity
+    uvec4 lightTypeData;    // x = light type, yzw = padding
+};
+
+struct TiledLightHeader {
+    uint lightListOffset;
+    uint lightCount;
+};
+
+
+shared uint sharedLightCount;
+shared uint sharedLightList[256];
+
+
+// Read light from bindless buffer
+GPULight getLight(uint lightIdx) {
+    // Each light is 3 vec4s (48 bytes)
+    uint baseOffset = lightIdx * 3u;
+    
+    return GPULight(
+        buffers[pc.lightBufferIdx].data[baseOffset],
+        buffers[pc.lightBufferIdx].data[baseOffset + 1u],
+        uvec4(buffers[pc.lightBufferIdx].data[baseOffset + 2u])
+    );
+}
+
+// Write light header
+void setHeader(uint tileIdx, uint offset, uint count) {
+    buffers[pc.headerBufferIdx].data[tileIdx * 2u] = vec4(uintBitsToFloat(offset), 0.0, 0.0, 0.0);
+    buffers[pc.headerBufferIdx].data[tileIdx * 2u + 1u] = vec4(uintBitsToFloat(count), 0.0, 0.0, 0.0);
+}
+
+// Write light index to tiled list
+void setLightIndex(uint globalIdx, uint lightIdx) {
+    buffers[pc.indicesBufferIdx].data[globalIdx] = vec4(uintBitsToFloat(lightIdx), 0.0, 0.0, 0.0);
+}
+
+
+void main() {
+    uint tileX = gl_WorkGroupID.x;
+    uint tileY = gl_WorkGroupID.y;
+    uint localX = gl_LocalInvocationID.x;
+    uint localY = gl_LocalInvocationID.y;
+    uint localIdx = localY * 16u + localX;
+
+    // Calculate tile index
+    uint tilesPerRow = (pc.screenWidth + pc.tileSize - 1u) / pc.tileSize;
+    uint tileIdx = tileY * tilesPerRow + tileX;
+
+    // Initialize shared memory
+    if (localIdx == 0u) {
+        sharedLightCount = 0u;
+    }
+
+    barrier();
+
+    // Each thread tests lights against this tile
+    uint lightIdx = localIdx;
+    while (lightIdx < pc.lightCount) {
+        GPULight light = getLight(lightIdx);
+
+        // Extract light position and radius
+        vec3 lightPos = light.positionRadius.xyz;
+        float lightRadius = light.positionRadius.w;
+
+        // Calculate tile bounds (world space)
+        vec2 tileCenter = vec2(
+            (float(tileX) + 0.5f) * float(pc.tileSize),
+            (float(tileY) + 0.5f) * float(pc.tileSize)
+        );
+
+        // Conservative: all lights affect all tiles
+        // TODO: Implement proper tile frustum culling with view matrix
+        bool lightAffectsTile = true;
+
+        if (lightAffectsTile) {
+            // Add light to list using atomic operation
+            uint idx = atomicAdd(sharedLightCount, 1u);
+            if (idx < 256u) {
+                sharedLightList[idx] = lightIdx;
+            }
+        }
+
+        lightIdx += 256u;  // Next batch (16×16 = 256 threads)
+    }
+
+    barrier();
+
+    // Write results to global buffers
+    if (localIdx == 0u) {
+        uint count = min(sharedLightCount, 256u);
+        uint offset = tileIdx * 256u;
+
+        // Write header (offset, count)
+        setHeader(tileIdx, offset, count);
+
+        // Write light indices
+        for (uint i = 0u; i < count; i++) {
+            setLightIndex(offset + i, sharedLightList[i]);
+        }
+    }
+}

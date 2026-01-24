@@ -163,7 +163,7 @@ public class MeshBuffer : IDisposable
     public void BindBuffers(CommandBuffer cmd)
     {
         if (!_finalized)
-            throw new InvalidOperationException("MeshBuffer not finalized");
+            throw new InvalidOperationException("MeshBuffer not finalized (Bind)");
 
         if (_vertexBuffer.Handle != 0)
             _vk.CmdBindVertexBuffers(cmd, 0, 1, _vertexBuffer, 0);
@@ -178,7 +178,7 @@ public class MeshBuffer : IDisposable
     public unsafe void DrawMesh(CommandBuffer cmd, Data.RenderingData.Mesh mesh)
     {
         if (!_finalized)
-            throw new InvalidOperationException("MeshBuffer not finalized");
+            throw new InvalidOperationException("MeshBuffer not finalized (Draw)");
 
         var entry = GetMeshEntry(mesh);
 
@@ -195,7 +195,7 @@ public class MeshBuffer : IDisposable
     public void UploadMeshData(Data.RenderingData.Mesh mesh, CommandBuffer transferCmd, FrameUploadRing uploadRing)
     {
         if (!_finalized)
-            throw new InvalidOperationException("MeshBuffer not finalized");
+            throw new InvalidOperationException("MeshBuffer not finalized (Upload)");
 
         if (mesh == null || mesh.Vertices == null || mesh.Indices == null)
             return;

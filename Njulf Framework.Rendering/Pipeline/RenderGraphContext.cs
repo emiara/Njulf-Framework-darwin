@@ -2,6 +2,8 @@
 
 using Silk.NET.Vulkan;
 using Njulf_Framework.Rendering.Data;
+using Njulf_Framework.Rendering.Resources;
+using Njulf_Framework.Rendering.Resources.Descriptors;
 
 namespace Njulf_Framework.Rendering.Pipeline;
 
@@ -9,17 +11,19 @@ namespace Njulf_Framework.Rendering.Pipeline;
 /// Context data passed to render graph passes, containing frame-specific
 /// information like dimensions, visible objects, and acceleration structures.
 /// </summary>
-public class RenderGraphContext
+public class RenderGraphContext(uint width, uint height, BindlessDescriptorHeap bindlessHeap)
 {
     /// <summary>
     /// Render target width in pixels.
     /// </summary>
-    public uint Width { get; set; }
+    public uint Width { get; set; } = width;
 
     /// <summary>
     /// Render target height in pixels.
     /// </summary>
-    public uint Height { get; set; }
+    public uint Height { get; set; } = height;
+    
+    public BindlessDescriptorHeap BindlessHeap { get; set; } = bindlessHeap;
 
     /// <summary>
     /// Current frame index for ring buffer management.
@@ -57,4 +61,9 @@ public class RenderGraphContext
     /// Camera position in world space.
     /// </summary>
     public System.Numerics.Vector3 CameraPosition { get; set; }
+
+    /// <summary>
+    /// Mesh manager for binding and drawing consolidated buffers.
+    /// </summary>
+    public MeshManager? MeshManager { get; set; }
 }

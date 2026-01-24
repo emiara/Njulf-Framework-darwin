@@ -133,9 +133,11 @@ public class DynamicRasterPass : RenderGraphPass
             };
             _vk.CmdSetScissor(cmd, 0, 1, &scissor);
 
+            ctx.MeshManager?.BindMeshBuffers(cmd);
+
             foreach (var obj in ctx.VisibleObjects)
             {
-                DrawObject(cmd, obj);
+                DrawObject(cmd, ctx, obj);
             }
         }
         finally
@@ -149,7 +151,7 @@ public class DynamicRasterPass : RenderGraphPass
     /// Draw a single render object from RenderingData module.
     /// Implement bindless indexing and push constants here.
     /// </summary>
-    private unsafe void DrawObject(CommandBuffer cmd, Data.RenderingData.RenderObject obj)
+    private unsafe void DrawObject(CommandBuffer cmd, RenderGraphContext ctx, Data.RenderingData.RenderObject obj)
     {
         // This is a placeholder implementation.
         // In a full implementation, this would:
@@ -157,9 +159,9 @@ public class DynamicRasterPass : RenderGraphPass
         // - Push object-specific data via push constants
         // - Issue draw calls with vertex/index buffers from obj.Mesh
         
-        if (obj?.Mesh?.Indices != null && obj.Mesh.Indices.Length > 0)
-        {
-            _vk.CmdDrawIndexed(cmd, (uint)obj.Mesh.Indices.Length, 1, 0, 0, 0);
-        }
+        if (obj?.Mesh == null)
+            return;
+
+        ctx.MeshManager?.DrawMesh(cmd, obj.Mesh);
     }
 }

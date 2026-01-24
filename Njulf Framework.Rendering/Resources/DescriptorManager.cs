@@ -141,6 +141,7 @@ public class DescriptorManager : IDisposable
         Console.WriteLine($"✓ Descriptor set {frameIndex} updated successfully");
     }
 
+
     public unsafe void Dispose()
     {
         if (_descriptorPool.Handle != 0)
