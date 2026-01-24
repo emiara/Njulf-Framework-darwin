@@ -205,27 +205,27 @@ public class MeshBuffer : IDisposable
         // Write vertex data to staging buffer
         if (mesh.Vertices.Length > 0)
         {
-            uploadRing.WriteData(mesh.Vertices);
+            uploadRing.WriteData(mesh.Vertices, out var vertexSrcOffset);
 
             var srcBuffer = uploadRing.CurrentUploadBuffer;
             var dstBuffer = _vertexBuffer;
             var vertexSize = (ulong)(entry.VertexCount * Marshal.SizeOf<Data.RenderingData.Vertex>());
             var dstOffset = entry.VertexOffset * (ulong)Marshal.SizeOf<Data.RenderingData.Vertex>();
 
-            RecordCopyCommand(transferCmd, srcBuffer, dstBuffer, 0, dstOffset, vertexSize);
+            RecordCopyCommand(transferCmd, srcBuffer, dstBuffer, vertexSrcOffset, dstOffset, vertexSize);
         }
 
         // Write index data to staging buffer
         if (mesh.Indices.Length > 0)
         {
-            uploadRing.WriteData(mesh.Indices);
+            uploadRing.WriteData(mesh.Indices, out var indexSrcOffset);
 
             var srcBuffer = uploadRing.CurrentUploadBuffer;
             var dstBuffer = _indexBuffer;
             var indexSize = (ulong)(entry.IndexCount * sizeof(uint));
             var dstOffset = entry.IndexOffset * sizeof(uint);
 
-            RecordCopyCommand(transferCmd, srcBuffer, dstBuffer, 0, dstOffset, indexSize);
+            RecordCopyCommand(transferCmd, srcBuffer, dstBuffer, indexSrcOffset, dstOffset, indexSize);
         }
 
         Console.WriteLine($"✓ Uploaded mesh '{mesh.Name}' to GPU buffers");

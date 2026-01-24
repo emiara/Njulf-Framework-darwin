@@ -1,6 +1,7 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
 using System.Numerics;
+using System.Linq;
 using Silk.NET.Vulkan;
 using Silk.NET.Windowing;
 using Silk.NET.Vulkan.Extensions.KHR;
@@ -51,6 +52,8 @@ public unsafe class VulkanRenderer : IDisposable
     private Buffer _depthBuffer;
     private Image _depthImage;
     private Allocation* _depthAllocation;
+    private ImageLayout _depthImageLayout = ImageLayout.Undefined;
+    private ImageLayout[]? _swapchainImageLayouts;
  
 
     // Phase 3.5: Forward+ lighting
@@ -128,6 +131,7 @@ public unsafe class VulkanRenderer : IDisposable
             Console.WriteLine("✓ Swapchain created");
             
             Console.WriteLine($"Swapchain format: {_swapchainManager.SwapchainImageFormat}");
+            _swapchainImageLayouts = Enumerable.Repeat(ImageLayout.Undefined, (int)_swapchainManager.SwapchainImageCount).ToArray();
 
             // Create depth buffer and image view for rendering
             CreateDepthResources();
@@ -530,15 +534,22 @@ public unsafe class VulkanRenderer : IDisposable
             }
         }
         
-        // Phase 3.5: CPU light update (before GPU upload)
-        _lightManager?.ClearLights();
-        
         var transferCommandBuffer = _commandBufferManager.TransferCommandBuffers[frameIndex];
         _commandBufferManager.ResetCommandBuffer(transferCommandBuffer);
         _commandBufferManager.BeginRecording(transferCommandBuffer);
 
+        // Upload mesh data once (no-op for already uploaded meshes)
+        foreach (var renderObject in _renderObjects.Values)
+        {
+            if (renderObject?.Mesh != null)
+            {
+                _meshManager.UploadMeshToGPU(renderObject.Mesh, transferCommandBuffer, _frameUploadRing);
+            }
+        }
+
         // Write CPU scene data to staging buffer and record copy commands
         _sceneBuilder.UploadToGPU(
+            _vulkanContext.VulkanApi,
             transferCommandBuffer,
             _frameUploadRing,
             _sceneObjectBuffer,
@@ -559,6 +570,13 @@ public unsafe class VulkanRenderer : IDisposable
         _commandBufferManager.ResetCommandBuffer(commandBuffer);
         _commandBufferManager.BeginRecording(commandBuffer);
         
+        // Transition: tracked layout -> COLOR_ATTACHMENT_OPTIMAL
+        var swapchainImage = _swapchainManager.SwapchainImages[imageIndex];
+        var oldSwapchainLayout = _swapchainImageLayouts![imageIndex];
+        TransitionImageLayout(commandBuffer, swapchainImage,
+            oldSwapchainLayout, ImageLayout.ColorAttachmentOptimal);
+        _swapchainImageLayouts[imageIndex] = ImageLayout.ColorAttachmentOptimal;
+
         var rgContext = new RenderGraphContext(
             _swapchainManager.SwapchainExtent.Width,
             _swapchainManager.SwapchainExtent.Height,
@@ -573,6 +591,13 @@ public unsafe class VulkanRenderer : IDisposable
             BindlessHeap = _bindlessHeap,
             MeshManager = _meshManager
         };
+
+        if (_depthImage.Handle != 0 && _depthImageLayout != ImageLayout.DepthAttachmentOptimal)
+        {
+            TransitionImageLayout(commandBuffer, _depthImage,
+                _depthImageLayout, ImageLayout.DepthAttachmentOptimal, ImageAspectFlags.DepthBit);
+            _depthImageLayout = ImageLayout.DepthAttachmentOptimal;
+        }
 
         _renderGraph?.Execute(commandBuffer, rgContext);
 
@@ -652,11 +677,7 @@ public unsafe class VulkanRenderer : IDisposable
         
         // Get the swapchain image for layout transition
         var swapchainImage = _swapchainManager.SwapchainImages[imageIndex];
-    
-        // Transition: UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL
-        TransitionImageLayout(commandBuffer, swapchainImage, 
-            ImageLayout.Undefined, ImageLayout.ColorAttachmentOptimal);
-        
+
         // Build render context
         var context = new RenderGraphContext(
             _swapchainManager.SwapchainExtent.Width,
@@ -792,6 +813,7 @@ public unsafe class VulkanRenderer : IDisposable
         // Transition: COLOR_ATTACHMENT_OPTIMAL -> PRESENT_SRC_KHR
         TransitionImageLayout(commandBuffer, swapchainImage,
             ImageLayout.ColorAttachmentOptimal, ImageLayout.PresentSrcKhr);
+        _swapchainImageLayouts![imageIndex] = ImageLayout.PresentSrcKhr;
     }
 
 
@@ -830,7 +852,7 @@ public unsafe class VulkanRenderer : IDisposable
         var waitStages = stackalloc PipelineStageFlags[2]
         {
             PipelineStageFlags.ColorAttachmentOutputBit,
-            PipelineStageFlags.TopOfPipeBit
+            PipelineStageFlags.AllCommandsBit
         };
         
         var submitInfo = new SubmitInfo
@@ -894,6 +916,7 @@ public unsafe class VulkanRenderer : IDisposable
             _vulkanContext.GraphicsQueue,
             (uint)_window.Size.X,
             (uint)_window.Size.Y);
+        _swapchainImageLayouts = Enumerable.Repeat(ImageLayout.Undefined, (int)_swapchainManager.SwapchainImageCount).ToArray();
 
         _framebufferManager = new FramebufferManager(
             vk,
@@ -905,6 +928,12 @@ public unsafe class VulkanRenderer : IDisposable
     
     private void TransitionImageLayout(CommandBuffer commandBuffer, Image image, 
         ImageLayout oldLayout, ImageLayout newLayout)
+    {
+        TransitionImageLayout(commandBuffer, image, oldLayout, newLayout, ImageAspectFlags.ColorBit);
+    }
+
+    private void TransitionImageLayout(CommandBuffer commandBuffer, Image image, 
+        ImageLayout oldLayout, ImageLayout newLayout, ImageAspectFlags aspectMask)
     {
         var vk = _vulkanContext!.VulkanApi;
 
@@ -918,7 +947,7 @@ public unsafe class VulkanRenderer : IDisposable
             Image = image,
             SubresourceRange = new ImageSubresourceRange
             {
-                AspectMask = ImageAspectFlags.ColorBit,
+                AspectMask = aspectMask,
                 BaseMipLevel = 0,
                 LevelCount = 1,
                 BaseArrayLayer = 0,
@@ -935,6 +964,20 @@ public unsafe class VulkanRenderer : IDisposable
             barrier.DstAccessMask = AccessFlags.ColorAttachmentWriteBit;
             sourceStage = PipelineStageFlags.TopOfPipeBit;
             destinationStage = PipelineStageFlags.ColorAttachmentOutputBit;
+        }
+        else if (oldLayout == ImageLayout.PresentSrcKhr && newLayout == ImageLayout.ColorAttachmentOptimal)
+        {
+            barrier.SrcAccessMask = 0;
+            barrier.DstAccessMask = AccessFlags.ColorAttachmentWriteBit;
+            sourceStage = PipelineStageFlags.BottomOfPipeBit;
+            destinationStage = PipelineStageFlags.ColorAttachmentOutputBit;
+        }
+        else if (oldLayout == ImageLayout.Undefined && newLayout == ImageLayout.DepthAttachmentOptimal)
+        {
+            barrier.SrcAccessMask = 0;
+            barrier.DstAccessMask = AccessFlags.DepthStencilAttachmentWriteBit;
+            sourceStage = PipelineStageFlags.TopOfPipeBit;
+            destinationStage = PipelineStageFlags.EarlyFragmentTestsBit;
         }
         else if (oldLayout == ImageLayout.ColorAttachmentOptimal && newLayout == ImageLayout.PresentSrcKhr)
         {

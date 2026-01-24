@@ -18,6 +18,7 @@ public sealed class FrameUploadRing : IDisposable
     private readonly BufferManager _bufferManager;
     private readonly BufferHandle[] _uploadBuffers;
     private readonly IntPtr[] _cpuMappings;
+    private readonly ulong[] _writeOffsets;
     private uint _frameIndex;
 
     /// <summary>
@@ -36,6 +37,7 @@ public sealed class FrameUploadRing : IDisposable
         _bufferManager = bufferManager ?? throw new ArgumentNullException(nameof(bufferManager));
         _uploadBuffers = new BufferHandle[MaxFrames];
         _cpuMappings = new IntPtr[MaxFrames];
+        _writeOffsets = new ulong[MaxFrames];
 
         // Create one big CPU-visible + mapped buffer per frame
         for (int i = 0; i < MaxFrames; i++)
@@ -51,6 +53,7 @@ public sealed class FrameUploadRing : IDisposable
             _cpuMappings[i] = _bufferManager.GetMappedPointer(_uploadBuffers[i]);
             if (_cpuMappings[i] == IntPtr.Zero)
                 throw new InvalidOperationException($"FrameUploadRing: failed to map upload buffer for frame {i}.");
+            _writeOffsets[i] = 0;
         }
     }
 
@@ -66,6 +69,16 @@ public sealed class FrameUploadRing : IDisposable
     /// </summary>
     public unsafe void WriteData<T>(ReadOnlySpan<T> data) where T : unmanaged
     {
+        WriteData(data, out _);
+    }
+
+    /// <summary>
+    /// Write a contiguous block of POD data into the current frame's upload buffer,
+    /// appending to the current write cursor. Returns the byte offset of the write.
+    /// </summary>
+    public unsafe void WriteData<T>(ReadOnlySpan<T> data, out ulong dstOffset) where T : unmanaged
+    {
+        dstOffset = 0;
         if (data.IsEmpty)
             return;
 
@@ -74,14 +87,20 @@ public sealed class FrameUploadRing : IDisposable
             throw new InvalidOperationException("Current upload buffer is not mapped.");
 
         ulong bytes = (ulong)(data.Length * sizeof(T));
-        if (bytes > UploadSize)
+        var frameOffset = _writeOffsets[CurrentFrameIndex];
+        if (frameOffset + bytes > UploadSize)
             throw new InvalidOperationException(
                 $"FrameUploadRing: write size ({bytes} bytes) exceeds UploadSize ({UploadSize} bytes).");
 
+        dstOffset = frameOffset;
+
         fixed (T* src = data)
         {
-            System.Buffer.MemoryCopy(src, dstPtr.ToPointer(), UploadSize, bytes);
+            var dst = (byte*)dstPtr.ToPointer() + frameOffset;
+            System.Buffer.MemoryCopy(src, dst, UploadSize - frameOffset, bytes);
         }
+
+        _writeOffsets[CurrentFrameIndex] = frameOffset + bytes;
     }
 
     /// <summary>
@@ -99,6 +118,7 @@ public sealed class FrameUploadRing : IDisposable
     public void NextFrame()
     {
         _frameIndex++;
+        _writeOffsets[CurrentFrameIndex] = 0;
     }
 
     public void Dispose()
@@ -111,6 +131,7 @@ public sealed class FrameUploadRing : IDisposable
             }
 
             _cpuMappings[i] = IntPtr.Zero;
+            _writeOffsets[i] = 0;
         }
     }
 }

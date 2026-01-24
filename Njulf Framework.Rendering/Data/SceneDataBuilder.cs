@@ -118,7 +118,7 @@ public class SceneDataBuilder : IDisposable
     /// Record copy commands to upload all scene data to GPU.
     /// The FrameUploadRing provides the staging buffers; you supply the destination buffers.
     /// </summary>
-    public void UploadToGPU(CommandBuffer cmd, FrameUploadRing uploadRing, 
+    public unsafe void UploadToGPU(Vk vk, CommandBuffer cmd, FrameUploadRing uploadRing, 
         Buffer objectDataBuffer, Buffer materialDataBuffer, Buffer meshDataBuffer)
     {
         if (_objectData.Count == 0)
@@ -130,9 +130,9 @@ public class SceneDataBuilder : IDisposable
         var meshArray = _meshData.ToArray();
 
         // Write to staging buffers
-        uploadRing.WriteData(objectArray);
-        uploadRing.WriteData(materialArray);
-        uploadRing.WriteData(meshArray);
+        uploadRing.WriteData(objectArray, out var objectSrcOffset);
+        uploadRing.WriteData(materialArray, out var materialSrcOffset);
+        uploadRing.WriteData(meshArray, out var meshSrcOffset);
 
         // Record copy commands
         var srcBuffer = uploadRing.CurrentUploadBuffer;
@@ -143,11 +143,11 @@ public class SceneDataBuilder : IDisposable
         {
             var objectCopy = new BufferCopy
             {
-                SrcOffset = 0,
+                SrcOffset = objectSrcOffset,
                 DstOffset = 0,
                 Size = objectDataSize
             };
-            // TODO: Vk!.CmdCopyBuffer(cmd, srcBuffer, objectDataBuffer, 1, &objectCopy);
+            vk.CmdCopyBuffer(cmd, srcBuffer, objectDataBuffer, 1, &objectCopy);
         }
 
         // Copy material data (offset after object data)
@@ -156,11 +156,11 @@ public class SceneDataBuilder : IDisposable
         {
             var materialCopy = new BufferCopy
             {
-                SrcOffset = objectDataSize,
+                SrcOffset = materialSrcOffset,
                 DstOffset = 0,
                 Size = materialDataSize
             };
-            // TODO: Vk!.CmdCopyBuffer(cmd, srcBuffer, materialDataBuffer, 1, &materialCopy);
+            vk.CmdCopyBuffer(cmd, srcBuffer, materialDataBuffer, 1, &materialCopy);
         }
 
         // Copy mesh data (offset after materials)
@@ -169,11 +169,11 @@ public class SceneDataBuilder : IDisposable
         {
             var meshCopy = new BufferCopy
             {
-                SrcOffset = objectDataSize + materialDataSize,
+                SrcOffset = meshSrcOffset,
                 DstOffset = 0,
                 Size = meshDataSize
             };
-            // TODO: Vk!.CmdCopyBuffer(cmd, srcBuffer, meshDataBuffer, 1, &meshCopy);
+            vk.CmdCopyBuffer(cmd, srcBuffer, meshDataBuffer, 1, &meshCopy);
         }
     }
 

@@ -104,12 +104,13 @@ public class LightManager : IDisposable
             return;
 
         // Write lights to CPU staging buffer
+        ulong srcOffset = 0;
         unsafe
         {
             var lightArray = _lights.ToArray();
             fixed (GPULight* ptr = lightArray)
             {
-                uploadRing.WriteData(new ReadOnlySpan<GPULight>(ptr, _lights.Count));
+                uploadRing.WriteData(new ReadOnlySpan<GPULight>(ptr, _lights.Count), out srcOffset);
             }
         }
 
@@ -117,32 +118,12 @@ public class LightManager : IDisposable
         var srcBuffer = uploadRing.CurrentUploadBuffer;
         var copyRegion = new BufferCopy
         {
-            SrcOffset = 0,
+            SrcOffset = srcOffset,
             DstOffset = 0,
             Size = (ulong)(_lights.Count * sizeof(GPULight))
         };
 
         _vk.CmdCopyBuffer(transferCmd, srcBuffer, _lightBufferVk, 1, copyRegion);
-
-        // Barrier: ensure copy is visible to compute shader
-        var barrier = new BufferMemoryBarrier
-        {
-            SType = StructureType.BufferMemoryBarrier,
-            SrcAccessMask = AccessFlags.TransferWriteBit,
-            DstAccessMask = AccessFlags.ShaderReadBit,
-            Buffer = _lightBufferVk,
-            Offset = 0,
-            Size = (ulong)(_lights.Count * sizeof(GPULight))
-        };
-
-        _vk.CmdPipelineBarrier(
-            transferCmd,
-            PipelineStageFlags.TransferBit,
-            PipelineStageFlags.ComputeShaderBit,
-            DependencyFlags.None,
-            0, null,
-            1, &barrier,
-            0, null);
     }
 
     /// <summary>
