@@ -1,0 +1,164 @@
+// SPDX-License-Identifier: MPL-2.0
+
+#version 460
+#extension GL_EXT_mesh_shader : require
+
+layout(local_size_x = 128) in;
+layout(max_vertices = 128, max_primitives = 64) out;
+layout(triangles) out;
+
+struct GPUMeshlet
+{
+    uint vertexOffset;
+    uint vertexCount;
+    uint triangleOffset;
+    uint triangleCount;
+    vec4 boundsMin;
+    vec4 boundsMax;
+    vec4 coneAxis;
+    vec4 coneData;
+};
+
+// Mesh buffers (set 2)
+layout(set = 2, binding = 0) readonly buffer VertexBuffer
+{
+    vec4 data[];
+} vertexBuffer;
+
+layout(set = 2, binding = 1) readonly buffer IndexBuffer
+{
+    uint data[];
+} indexBuffer;
+
+layout(set = 2, binding = 2) readonly buffer MeshletBuffer
+{
+    GPUMeshlet data[];
+} meshletBuffer;
+
+layout(set = 2, binding = 3) readonly buffer MeshletVertexIndexBuffer
+{
+    uint data[];
+} meshletVertexIndexBuffer;
+
+layout(set = 2, binding = 4) readonly buffer MeshletTriangleIndexBuffer
+{
+    uint data[];
+} meshletTriangleIndexBuffer;
+
+// Push constants
+layout(push_constant) uniform PushConstants
+{
+    mat4 model;
+    mat4 view;
+    mat4 projection;
+    uint materialIndex;
+    uint vertexOffset;
+    uint indexOffset;
+    uint indexCount;
+    uint vertexCount;
+    uint meshletOffset;
+    uint meshletCount;
+    float meshBoundsRadius;
+    uint screenWidth;
+    uint screenHeight;
+    uint debugMeshlets;
+    uint lightCount;
+    uint lightBufferIndex;
+    uint tiledLightHeaderBufferIndex;
+    uint tiledLightIndicesBufferIndex;
+    uint padding;
+} pc;
+
+layout(location = 0) out vec3 outPosition[];
+layout(location = 1) out vec3 outNormal[];
+layout(location = 2) out vec2 outTexCoord[];
+layout(location = 3) out flat uint outMaterialIndex[];
+layout(location = 4) out flat uint outMeshletIndex[];
+
+void unpackVertex(uint vertexIndex, out vec3 position, out vec3 normal, out vec2 texCoord)
+{
+    uint base = vertexIndex * 2;
+    vec4 a = vertexBuffer.data[base + 0];
+    vec4 b = vertexBuffer.data[base + 1];
+
+    position = a.xyz;
+    normal = vec3(a.w, b.x, b.y);
+    texCoord = vec2(b.z, b.w);
+}
+
+void main()
+{
+    if (gl_WorkGroupID.x >= pc.meshletCount)
+    {
+        if (gl_LocalInvocationIndex == 0)
+        {
+            SetMeshOutputsEXT(0, 0);
+        }
+        return;
+    }
+
+    uint meshletIndex = pc.meshletOffset + gl_WorkGroupID.x;
+    GPUMeshlet meshlet = meshletBuffer.data[meshletIndex];
+    uint primCount = meshlet.triangleCount;
+
+    vec3 center = (meshlet.boundsMin.xyz + meshlet.boundsMax.xyz) * 0.5;
+    vec3 extent = (meshlet.boundsMax.xyz - meshlet.boundsMin.xyz) * 0.5;
+    float baseRadius = length(extent);
+    float scale = max(length(pc.model[0].xyz), max(length(pc.model[1].xyz), length(pc.model[2].xyz)));
+    float radius = baseRadius * scale;
+
+    vec4 worldCenter = pc.model * vec4(center, 1.0);
+    vec4 clip = pc.projection * pc.view * worldCenter;
+    bool culled = (clip.x < -clip.w - radius || clip.x > clip.w + radius ||
+                   clip.y < -clip.w - radius || clip.y > clip.w + radius ||
+                   clip.z < -clip.w - radius || clip.z > clip.w + radius);
+
+    vec3 axisWorld = normalize(mat3(pc.model) * meshlet.coneAxis.xyz);
+    vec3 axisView = normalize(mat3(pc.view) * axisWorld);
+    vec3 viewPos = (pc.view * worldCenter).xyz;
+    vec3 viewDir = normalize(-viewPos);
+    float coneCutoff = meshlet.coneData.x;
+    if (coneCutoff > -0.5)
+    {
+        if (dot(viewDir, axisView) < coneCutoff)
+            culled = true;
+    }
+    if (gl_LocalInvocationIndex == 0)
+    {
+        if (culled)
+            SetMeshOutputsEXT(0, 0);
+        else
+            SetMeshOutputsEXT(meshlet.vertexCount, primCount);
+    }
+
+    if (culled)
+        return;
+
+    if (primCount == 0)
+        return;
+
+    uint localIndex = gl_LocalInvocationIndex;
+    if (localIndex < meshlet.vertexCount)
+    {
+        uint globalIndex = meshletVertexIndexBuffer.data[meshlet.vertexOffset + localIndex] + pc.vertexOffset;
+        vec3 pos;
+        vec3 normal;
+        vec2 uv;
+        unpackVertex(globalIndex, pos, normal, uv);
+        gl_MeshVerticesEXT[localIndex].gl_Position = pc.projection * pc.view * pc.model * vec4(pos, 1.0);
+        outPosition[localIndex] = vec3(pc.model * vec4(pos, 1.0));
+        outNormal[localIndex] = normalize(mat3(pc.model) * normal);
+        outTexCoord[localIndex] = uv;
+        outMaterialIndex[localIndex] = pc.materialIndex;
+        outMeshletIndex[localIndex] = meshletIndex;
+    }
+
+    if (localIndex < primCount)
+    {
+        uint triBase = meshlet.triangleOffset + localIndex * 3u;
+        uint l0 = meshletTriangleIndexBuffer.data[triBase + 0];
+        uint l1 = meshletTriangleIndexBuffer.data[triBase + 1];
+        uint l2 = meshletTriangleIndexBuffer.data[triBase + 2];
+        gl_PrimitiveTriangleIndicesEXT[localIndex] = uvec3(l0, l1, l2);
+    }
+}

@@ -18,6 +18,7 @@ public class SceneDataBuilder : IDisposable
     private readonly List<GPUObjectData> _objectData = new();
     private readonly List<GPUMaterial> _materialData = new();
     private readonly List<GPUMeshData> _meshData = new();
+    private Njulf_Framework.Rendering.Resources.MeshManager? _meshManager;
 
     // Cache to avoid duplicate materials/meshes
     private readonly Dictionary<RenderingData.Material, uint> _materialIndexMap = new();
@@ -25,6 +26,11 @@ public class SceneDataBuilder : IDisposable
 
     public SceneDataBuilder()
     {
+    }
+
+    public void SetMeshManager(Njulf_Framework.Rendering.Resources.MeshManager? meshManager)
+    {
+        _meshManager = meshManager;
     }
 
     /// <summary>
@@ -100,13 +106,24 @@ public class SceneDataBuilder : IDisposable
         // Calculate bounding box
         var (bbMin, bbMax) = GPUMeshData.CalculateBoundingBox(mesh.Vertices);
 
+        uint meshletOffset = 0;
+        uint meshletCount = 0;
+        if (_meshManager != null)
+        {
+            var entry = _meshManager.GetOrCreateMeshGpu(mesh);
+            meshletOffset = entry.MeshletOffset;
+            meshletCount = entry.MeshletCount;
+        }
+
         var gpuMeshData = new GPUMeshData(
             vertexBufferIndex: uint.MaxValue,    // TODO: get from buffer manager
             indexBufferIndex: uint.MaxValue,
             vertexCount: (uint)mesh.Vertices.Length,
             indexCount: (uint)mesh.Indices.Length,
             boundingBoxMin: bbMin,
-            boundingBoxMax: bbMax
+            boundingBoxMax: bbMax,
+            meshletOffset: meshletOffset,
+            meshletCount: meshletCount
         );
 
         _meshData.Add(gpuMeshData);

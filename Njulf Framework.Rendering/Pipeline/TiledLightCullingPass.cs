@@ -193,4 +193,14 @@ public class TiledLightCullingPass : RenderGraphPass
     /// Get tiled light indices buffer for fragment shader access.
     /// </summary>
     public Buffer GetTiledLightIndicesBuffer() => _tiledLightIndicesBufferVk;
+
+    /// <summary>
+    /// Bindless index for tiled light header buffer.
+    /// </summary>
+    public uint TiledLightHeaderBufferIndex => _tiledLightHeaderBufferIndex;
+
+    /// <summary>
+    /// Bindless index for tiled light indices buffer.
+    /// </summary>
+    public uint TiledLightIndicesBufferIndex => _tiledLightIndicesBufferIndex;
 }

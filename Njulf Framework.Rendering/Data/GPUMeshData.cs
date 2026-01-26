@@ -46,4 +46,9 @@ public struct GPUMeshData
     public Vector3 BoundingBoxMax;
 
     private uint Padding2;
+
+    public uint MeshletOffset;
+    public uint MeshletCount;
+    private uint Padding3;
+    private uint Padding4;
 }

@@ -196,8 +196,22 @@ public class RenderingData
         public Matrix4x4 Projection;   // 64 bytes
 
         public uint MaterialIndex;     // 4 bytes
-        public uint MeshIndex;         // 4 bytes
-        public uint InstanceIndex;     // 4 bytes
+        public uint VertexOffset;      // 4 bytes
+
+        public uint IndexOffset;       // 4 bytes
+        public uint IndexCount;        // 4 bytes
+        public uint VertexCount;       // 4 bytes
+        public uint MeshletOffset;     // 4 bytes
+
+        public uint MeshletCount;      // 4 bytes
+        public float MeshBoundsRadius; // 4 bytes
+        public uint ScreenWidth;       // 4 bytes
+        public uint ScreenHeight;      // 4 bytes
+        public uint DebugMeshlets;     // 4 bytes
+        public uint LightCount;        // 4 bytes
+        public uint LightBufferIndex;  // 4 bytes
+        public uint TiledLightHeaderBufferIndex;   // 4 bytes
+        public uint TiledLightIndicesBufferIndex;  // 4 bytes
         public uint Padding;           // 4 bytes (align to 16)
     }
 }

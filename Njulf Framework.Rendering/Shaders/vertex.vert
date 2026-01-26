@@ -13,6 +13,17 @@ layout(push_constant) uniform PushConstants {
     uint materialIndex;
     uint meshIndex;
     uint instanceIndex;
+    uint vertexOffset;
+    uint indexOffset;
+    uint indexCount;
+    uint vertexCount;
+    uint meshletOffset;
+    uint meshletCount;
+    float meshBoundsRadius;
+    uint screenWidth;
+    uint screenHeight;
+    uint debugMeshlets;
+    uint padding;
 } pc;
 
 // Outputs (to fragment shader)

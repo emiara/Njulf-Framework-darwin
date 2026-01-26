@@ -155,6 +155,7 @@ public unsafe class VulkanContext : IDisposable
         Console.WriteLine($"Selected GPU: {gpuName}");
 
         VerifyVulkan13Support();
+        VerifyMeshShaderSupport();
     }
 
     private unsafe void VerifyVulkan13Support()
@@ -167,6 +168,25 @@ public unsafe class VulkanContext : IDisposable
             throw new Exception("Vulkan version 1.3 is not supported on this device");
         
         Console.WriteLine($"Vulkan version 1.3 is supported on this device");
+    }
+
+    private unsafe void VerifyMeshShaderSupport()
+    {
+        var meshFeatures = new PhysicalDeviceMeshShaderFeaturesEXT
+        {
+            SType = StructureType.PhysicalDeviceMeshShaderFeaturesExt
+        };
+        var features2 = new PhysicalDeviceFeatures2
+        {
+            SType = StructureType.PhysicalDeviceFeatures2,
+            PNext = &meshFeatures
+        };
+
+        _vk.GetPhysicalDeviceFeatures2(_physicalDevice, &features2);
+        if (!meshFeatures.MeshShader)
+        {
+            throw new Exception("VK_EXT_mesh_shader is not supported on this device");
+        }
     }
 
     private void CreateLogicalDevice(bool enableValidation)
@@ -229,10 +249,18 @@ public unsafe class VulkanContext : IDisposable
             NullDescriptor = true
         };
 
+        var meshShaderFeatures = new PhysicalDeviceMeshShaderFeaturesEXT
+        {
+            SType = StructureType.PhysicalDeviceMeshShaderFeaturesExt,
+            PNext = &robustness2Features,
+            MeshShader = true,
+            TaskShader = true
+        };
+
         var vulkan12Features = new PhysicalDeviceVulkan12Features()
         {
             SType = StructureType.PhysicalDeviceVulkan12Features,
-            PNext = &robustness2Features,
+            PNext = &meshShaderFeatures,
             BufferDeviceAddress = true,
             DescriptorIndexing = true,
             RuntimeDescriptorArray = true,
@@ -255,6 +283,7 @@ public unsafe class VulkanContext : IDisposable
             KhrDeferredHostOperations.ExtensionName,
             KhrSynchronization2.ExtensionName,
             KhrDynamicRendering.ExtensionName,
+            ExtMeshShader.ExtensionName,
             
         };
         var extensionPtrs = new List<IntPtr>();
@@ -400,6 +429,12 @@ public unsafe class VulkanContext : IDisposable
 
     public void Dispose()
     {
+        if (_vmaAllocator != null)
+        {
+            Apis.DestroyAllocator(_vmaAllocator);
+            _vmaAllocator = null;
+        }
+
         if (_device.Handle != 0)
         {
             _vk.DeviceWaitIdle(_device);
@@ -409,11 +444,6 @@ public unsafe class VulkanContext : IDisposable
         if (_instance.Handle != 0)
         {
             _vk.DestroyInstance(_instance, null);
-        }
-        
-        if (_vmaAllocator != null)
-        {
-            Apis.DestroyAllocator(_vmaAllocator);
         }
     }
 }

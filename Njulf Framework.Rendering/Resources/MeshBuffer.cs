@@ -1,5 +1,7 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
+using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Silk.NET.Vulkan;
 using Njulf_Framework.Rendering.Data;
@@ -20,6 +22,9 @@ namespace Njulf_Framework.Rendering.Resources;
 /// </summary>
 public class MeshBuffer : IDisposable
 {
+    private const uint MaxPrimsPerMeshlet = 64;
+    private const uint MaxVertsPerMeshlet = 128;
+
     private readonly BufferManager _bufferManager;
     private readonly Vk _vk;
     private readonly Device _device;
@@ -30,6 +35,18 @@ public class MeshBuffer : IDisposable
     private Buffer _vertexBuffer;
     private Buffer _indexBuffer;
 
+    private BufferHandle _meshletBufferHandle;
+    private BufferHandle _meshletVertexIndicesBufferHandle;
+    private BufferHandle _meshletTriangleIndicesBufferHandle;
+    private Buffer _meshletBuffer;
+    private Buffer _meshletVertexIndicesBuffer;
+    private Buffer _meshletTriangleIndicesBuffer;
+
+    private readonly List<GPUMeshlet> _meshlets = new();
+    private readonly List<uint> _meshletVertexIndices = new();
+    private readonly List<uint> _meshletTriangleIndices = new();
+    private bool _meshletDataUploaded = false;
+
     // CPU-side mesh registry
     public class MeshEntry
     {
@@ -37,6 +54,9 @@ public class MeshBuffer : IDisposable
         public uint IndexOffset { get; set; }       // Offset in index buffer (in indices)
         public uint VertexCount { get; set; }
         public uint IndexCount { get; set; }
+        public uint MeshletOffset { get; set; }
+        public uint MeshletCount { get; set; }
+        public float BoundsRadius { get; set; }
     }
 
     private readonly Dictionary<Data.RenderingData.Mesh, MeshEntry> _meshes = new();
@@ -71,7 +91,8 @@ public class MeshBuffer : IDisposable
             VertexOffset = _totalVertices,
             IndexOffset = _totalIndices,
             VertexCount = (uint)(mesh.Vertices?.Length ?? 0),
-            IndexCount = (uint)(mesh.Indices?.Length ?? 0)
+            IndexCount = (uint)(mesh.Indices?.Length ?? 0),
+            BoundsRadius = ComputeBoundsRadius(mesh)
         };
 
         _meshes[mesh] = entry;
@@ -94,6 +115,8 @@ public class MeshBuffer : IDisposable
             throw new InvalidOperationException("No meshes registered");
 
         Console.WriteLine($"Finalizing MeshBuffer: {_totalVertices} total vertices, {_totalIndices} total indices");
+
+        BuildMeshlets();
 
         // Allocate vertex buffer
         if (_totalVertices > 0)
@@ -127,6 +150,30 @@ public class MeshBuffer : IDisposable
             Console.WriteLine($"✓ Index buffer allocated: {indexSize / (1024 * 1024)} MB");
         }
 
+        if (_meshlets.Count > 0)
+        {
+            var meshletSize = (ulong)(_meshlets.Count * System.Runtime.InteropServices.Marshal.SizeOf<GPUMeshlet>());
+            _meshletBufferHandle = _bufferManager.AllocateBuffer(
+                meshletSize,
+                BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
+                MemoryUsage.AutoPreferDevice);
+            _meshletBuffer = _bufferManager.GetBuffer(_meshletBufferHandle);
+
+            var meshletVertexIndexSize = (ulong)(_meshletVertexIndices.Count * sizeof(uint));
+            _meshletVertexIndicesBufferHandle = _bufferManager.AllocateBuffer(
+                meshletVertexIndexSize,
+                BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
+                MemoryUsage.AutoPreferDevice);
+            _meshletVertexIndicesBuffer = _bufferManager.GetBuffer(_meshletVertexIndicesBufferHandle);
+
+            var meshletTriangleIndexSize = (ulong)(_meshletTriangleIndices.Count * sizeof(uint));
+            _meshletTriangleIndicesBufferHandle = _bufferManager.AllocateBuffer(
+                meshletTriangleIndexSize,
+                BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
+                MemoryUsage.AutoPreferDevice);
+            _meshletTriangleIndicesBuffer = _bufferManager.GetBuffer(_meshletTriangleIndicesBufferHandle);
+        }
+
         _finalized = true;
     }
 
@@ -153,7 +200,9 @@ public class MeshBuffer : IDisposable
             VertexCount = entry.VertexCount,
             IndexCount = entry.IndexCount,
             BoundingBoxMin = new System.Numerics.Vector3(-1),
-            BoundingBoxMax = new System.Numerics.Vector3(1)
+            BoundingBoxMax = new System.Numerics.Vector3(1),
+            MeshletOffset = entry.MeshletOffset,
+            MeshletCount = entry.MeshletCount
         };
     }
 
@@ -228,6 +277,8 @@ public class MeshBuffer : IDisposable
             RecordCopyCommand(transferCmd, srcBuffer, dstBuffer, indexSrcOffset, dstOffset, indexSize);
         }
 
+        UploadMeshletData(transferCmd, uploadRing);
+
         Console.WriteLine($"✓ Uploaded mesh '{mesh.Name}' to GPU buffers");
     }
 
@@ -267,6 +318,14 @@ public class MeshBuffer : IDisposable
     /// </summary>
     public Buffer IndexBuffer => _indexBuffer;
 
+    public Buffer MeshletBuffer => _meshletBuffer;
+    public Buffer MeshletVertexIndicesBuffer => _meshletVertexIndicesBuffer;
+    public Buffer MeshletTriangleIndicesBuffer => _meshletTriangleIndicesBuffer;
+
+    public BufferHandle MeshletBufferHandle => _meshletBufferHandle;
+    public BufferHandle MeshletVertexIndicesBufferHandle => _meshletVertexIndicesBufferHandle;
+    public BufferHandle MeshletTriangleIndicesBufferHandle => _meshletTriangleIndicesBufferHandle;
+
     /// <summary>
     /// Total vertex count across all meshes.
     /// </summary>
@@ -285,6 +344,204 @@ public class MeshBuffer : IDisposable
     public void Dispose()
     {
         _meshes.Clear();
+        _meshlets.Clear();
+        _meshletVertexIndices.Clear();
+        _meshletTriangleIndices.Clear();
         // BufferManager handles actual VMA deallocation
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    public struct GPUMeshlet
+    {
+        public uint VertexOffset;
+        public uint VertexCount;
+        public uint TriangleOffset;
+        public uint TriangleCount;
+        public System.Numerics.Vector4 BoundsMin;
+        public System.Numerics.Vector4 BoundsMax;
+        public System.Numerics.Vector4 ConeAxis;
+        public System.Numerics.Vector4 ConeData;
+    }
+
+    private void BuildMeshlets()
+    {
+        _meshlets.Clear();
+        _meshletVertexIndices.Clear();
+        _meshletTriangleIndices.Clear();
+
+        foreach (var kvp in _meshes)
+        {
+            var mesh = kvp.Key;
+            var entry = kvp.Value;
+            var indices = mesh.Indices;
+            var vertices = mesh.Vertices;
+
+            var meshletOffset = (uint)_meshlets.Count;
+            var meshletCount = 0u;
+
+            var triCount = indices.Length / 3;
+            var triIndex = 0;
+            while (triIndex < triCount)
+            {
+                var localMap = new Dictionary<uint, uint>();
+                var localVerts = new List<uint>();
+                var localTris = new List<uint>();
+
+                var boundsMin = new System.Numerics.Vector3(float.MaxValue);
+                var boundsMax = new System.Numerics.Vector3(float.MinValue);
+                var normalSum = new System.Numerics.Vector3(0);
+                var triNormals = new List<System.Numerics.Vector3>();
+
+                while (triIndex < triCount && localTris.Count / 3 < MaxPrimsPerMeshlet)
+                {
+                    var baseIndex = triIndex * 3;
+                    var i0 = indices[baseIndex + 0];
+                    var i1 = indices[baseIndex + 1];
+                    var i2 = indices[baseIndex + 2];
+
+                    var neededNew = 0;
+                    if (!localMap.ContainsKey(i0)) neededNew++;
+                    if (!localMap.ContainsKey(i1)) neededNew++;
+                    if (!localMap.ContainsKey(i2)) neededNew++;
+                    if (localVerts.Count + neededNew > MaxVertsPerMeshlet)
+                        break;
+
+                    uint l0 = GetOrAddLocalVertex(i0, localMap, localVerts, vertices, ref boundsMin, ref boundsMax);
+                    uint l1 = GetOrAddLocalVertex(i1, localMap, localVerts, vertices, ref boundsMin, ref boundsMax);
+                    uint l2 = GetOrAddLocalVertex(i2, localMap, localVerts, vertices, ref boundsMin, ref boundsMax);
+
+                    localTris.Add(l0);
+                    localTris.Add(l1);
+                    localTris.Add(l2);
+
+                    var p0 = vertices[i0].Position;
+                    var p1 = vertices[i1].Position;
+                    var p2 = vertices[i2].Position;
+                    var n = System.Numerics.Vector3.Cross(p1 - p0, p2 - p0);
+                    if (n.LengthSquared() > 0.0f)
+                    {
+                        n = System.Numerics.Vector3.Normalize(n);
+                        triNormals.Add(n);
+                        normalSum += n;
+                    }
+
+                    triIndex++;
+                }
+
+                if (localTris.Count == 0)
+                    break;
+
+                var vertexOffset = (uint)_meshletVertexIndices.Count;
+                var triangleOffset = (uint)_meshletTriangleIndices.Count;
+
+                _meshletVertexIndices.AddRange(localVerts);
+                _meshletTriangleIndices.AddRange(localTris);
+
+                var coneAxis = normalSum.LengthSquared() > 0.0f
+                    ? System.Numerics.Vector3.Normalize(normalSum)
+                    : new System.Numerics.Vector3(0, 0, 1);
+                var coneCutoff = -1.0f;
+                if (triNormals.Count > 0)
+                {
+                    var maxAngle = 0.0f;
+                    foreach (var n in triNormals)
+                    {
+                        var dot = Math.Clamp(System.Numerics.Vector3.Dot(coneAxis, n), -1.0f, 1.0f);
+                        var angle = MathF.Acos(dot);
+                        if (angle > maxAngle)
+                            maxAngle = angle;
+                    }
+                    coneCutoff = MathF.Cos(maxAngle);
+                }
+
+                _meshlets.Add(new GPUMeshlet
+                {
+                    VertexOffset = vertexOffset,
+                    VertexCount = (uint)localVerts.Count,
+                    TriangleOffset = triangleOffset,
+                    TriangleCount = (uint)(localTris.Count / 3),
+                    BoundsMin = new System.Numerics.Vector4(boundsMin, 0),
+                    BoundsMax = new System.Numerics.Vector4(boundsMax, 0),
+                    ConeAxis = new System.Numerics.Vector4(coneAxis, 0),
+                    ConeData = new System.Numerics.Vector4(coneCutoff, 0, 0, 0)
+                });
+
+                meshletCount++;
+            }
+
+            entry.MeshletOffset = meshletOffset;
+            entry.MeshletCount = meshletCount;
+        }
+    }
+
+    private unsafe void UploadMeshletData(CommandBuffer transferCmd, FrameUploadRing uploadRing)
+    {
+        if (_meshletDataUploaded || _meshlets.Count == 0)
+            return;
+
+        uploadRing.WriteData(_meshlets.ToArray(), out var meshletSrcOffset);
+        uploadRing.WriteData(_meshletVertexIndices.ToArray(), out var meshletVertexIndexSrcOffset);
+        uploadRing.WriteData(_meshletTriangleIndices.ToArray(), out var meshletTriangleIndexSrcOffset);
+
+        var srcBuffer = uploadRing.CurrentUploadBuffer;
+
+        var meshletSize = (ulong)(_meshlets.Count * System.Runtime.InteropServices.Marshal.SizeOf<GPUMeshlet>());
+        var meshletCopy = new BufferCopy
+        {
+            SrcOffset = meshletSrcOffset,
+            DstOffset = 0,
+            Size = meshletSize
+        };
+        _vk.CmdCopyBuffer(transferCmd, srcBuffer, _meshletBuffer, 1, &meshletCopy);
+
+        var meshletVertexIndexSize = (ulong)(_meshletVertexIndices.Count * sizeof(uint));
+        var meshletVertexIndexCopy = new BufferCopy
+        {
+            SrcOffset = meshletVertexIndexSrcOffset,
+            DstOffset = 0,
+            Size = meshletVertexIndexSize
+        };
+        _vk.CmdCopyBuffer(transferCmd, srcBuffer, _meshletVertexIndicesBuffer, 1, &meshletVertexIndexCopy);
+
+        var meshletTriangleIndexSize = (ulong)(_meshletTriangleIndices.Count * sizeof(uint));
+        var meshletTriangleIndexCopy = new BufferCopy
+        {
+            SrcOffset = meshletTriangleIndexSrcOffset,
+            DstOffset = 0,
+            Size = meshletTriangleIndexSize
+        };
+        _vk.CmdCopyBuffer(transferCmd, srcBuffer, _meshletTriangleIndicesBuffer, 1, &meshletTriangleIndexCopy);
+
+        _meshletDataUploaded = true;
+    }
+
+    private static uint GetOrAddLocalVertex(
+        uint globalIndex,
+        Dictionary<uint, uint> localMap,
+        List<uint> localVerts,
+        Data.RenderingData.Vertex[] vertices,
+        ref System.Numerics.Vector3 boundsMin,
+        ref System.Numerics.Vector3 boundsMax)
+    {
+        if (localMap.TryGetValue(globalIndex, out var localIndex))
+            return localIndex;
+
+        localIndex = (uint)localVerts.Count;
+        localMap[globalIndex] = localIndex;
+        localVerts.Add(globalIndex);
+
+        var v = vertices[globalIndex].Position;
+        boundsMin = System.Numerics.Vector3.Min(boundsMin, v);
+        boundsMax = System.Numerics.Vector3.Max(boundsMax, v);
+
+        return localIndex;
+    }
+
+    private static float ComputeBoundsRadius(Data.RenderingData.Mesh mesh)
+    {
+        var min = mesh.BoundingBoxMin;
+        var max = mesh.BoundingBoxMax;
+        var extent = (max - min) * 0.5f;
+        return extent.Length();
     }
 }

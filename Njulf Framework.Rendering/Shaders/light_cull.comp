@@ -15,7 +15,7 @@ layout(push_constant) uniform PushConstants {
 
 
 layout(set = 0, binding = 0) buffer StorageBuffers {
-    vec4 data[];
+    uint data[];
 } buffers[65536];
 
 
@@ -37,25 +37,42 @@ shared uint sharedLightList[256];
 
 // Read light from bindless buffer
 GPULight getLight(uint lightIdx) {
-    // Each light is 3 vec4s (48 bytes)
-    uint baseOffset = lightIdx * 3u;
-    
-    return GPULight(
-        buffers[pc.lightBufferIdx].data[baseOffset],
-        buffers[pc.lightBufferIdx].data[baseOffset + 1u],
-        uvec4(buffers[pc.lightBufferIdx].data[baseOffset + 2u])
+    // Each light is 12 uints (48 bytes)
+    uint baseOffset = lightIdx * 12u;
+
+    vec4 positionRadius = vec4(
+        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 0u]),
+        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 1u]),
+        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 2u]),
+        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 3u])
     );
+
+    vec4 colorIntensity = vec4(
+        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 4u]),
+        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 5u]),
+        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 6u]),
+        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 7u])
+    );
+
+    uvec4 lightTypeData = uvec4(
+        buffers[pc.lightBufferIdx].data[baseOffset + 8u],
+        buffers[pc.lightBufferIdx].data[baseOffset + 9u],
+        buffers[pc.lightBufferIdx].data[baseOffset + 10u],
+        buffers[pc.lightBufferIdx].data[baseOffset + 11u]
+    );
+
+    return GPULight(positionRadius, colorIntensity, lightTypeData);
 }
 
 // Write light header
 void setHeader(uint tileIdx, uint offset, uint count) {
-    buffers[pc.headerBufferIdx].data[tileIdx * 2u] = vec4(uintBitsToFloat(offset), 0.0, 0.0, 0.0);
-    buffers[pc.headerBufferIdx].data[tileIdx * 2u + 1u] = vec4(uintBitsToFloat(count), 0.0, 0.0, 0.0);
+    buffers[pc.headerBufferIdx].data[tileIdx * 2u] = offset;
+    buffers[pc.headerBufferIdx].data[tileIdx * 2u + 1u] = count;
 }
 
 // Write light index to tiled list
 void setLightIndex(uint globalIdx, uint lightIdx) {
-    buffers[pc.indicesBufferIdx].data[globalIdx] = vec4(uintBitsToFloat(lightIdx), 0.0, 0.0, 0.0);
+    buffers[pc.indicesBufferIdx].data[globalIdx] = lightIdx;
 }
 
 

@@ -163,8 +163,25 @@ public struct GPUMeshData
     /// </summary>
     public uint Padding2;
 
+    /// <summary>
+    /// Offset into meshlet buffer.
+    /// </summary>
+    public uint MeshletOffset;
+
+    /// <summary>
+    /// Meshlet count for this mesh.
+    /// </summary>
+    public uint MeshletCount;
+
+    /// <summary>
+    /// Padding to align to 16-byte boundary.
+    /// </summary>
+    public uint Padding3;
+    public uint Padding4;
+
     public GPUMeshData(uint vertexBufferIndex, uint indexBufferIndex,
-        uint vertexCount, uint indexCount, Vector3 boundingBoxMin, Vector3 boundingBoxMax)
+        uint vertexCount, uint indexCount, Vector3 boundingBoxMin, Vector3 boundingBoxMax,
+        uint meshletOffset, uint meshletCount)
     {
         VertexBufferIndex = vertexBufferIndex;
         IndexBufferIndex = indexBufferIndex;
@@ -174,6 +191,10 @@ public struct GPUMeshData
         BoundingBoxMax = boundingBoxMax;
         Padding1 = 0;
         Padding2 = 0;
+        MeshletOffset = meshletOffset;
+        MeshletCount = meshletCount;
+        Padding3 = 0;
+        Padding4 = 0;
     }
 
     /// <summary>

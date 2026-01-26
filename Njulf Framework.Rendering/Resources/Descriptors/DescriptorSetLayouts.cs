@@ -18,6 +18,7 @@ public sealed class DescriptorSetLayouts : IDisposable
 
     public DescriptorSetLayout BufferHeapLayout { get; private set; }
     public DescriptorSetLayout TextureHeapLayout { get; private set; }
+    public DescriptorSetLayout MeshBuffersLayout { get; private set; }
 
     private const uint MaxBindlessBuffers = 65536;
     private const uint MaxBindlessTextures = 65536;
@@ -63,7 +64,8 @@ public sealed class DescriptorSetLayouts : IDisposable
             Binding = 0,  // Single binding
             DescriptorType = DescriptorType.StorageBuffer,
             DescriptorCount = maxStorageBuffers,  // 65536 descriptors
-            StageFlags = ShaderStageFlags.AllGraphics | ShaderStageFlags.ComputeBit,
+            StageFlags = ShaderStageFlags.AllGraphics | ShaderStageFlags.ComputeBit |
+                         ShaderStageFlags.MeshBitExt | ShaderStageFlags.TaskBitExt,
             PImmutableSamplers = null
         };
 
@@ -99,7 +101,8 @@ public sealed class DescriptorSetLayouts : IDisposable
             Binding = 0,  // Single binding
             DescriptorType = DescriptorType.CombinedImageSampler,
             DescriptorCount = maxImages,  // 65536 descriptors
-            StageFlags = ShaderStageFlags.AllGraphics | ShaderStageFlags.ComputeBit,
+            StageFlags = ShaderStageFlags.AllGraphics | ShaderStageFlags.ComputeBit |
+                         ShaderStageFlags.MeshBitExt | ShaderStageFlags.TaskBitExt,
             PImmutableSamplers = null
         };
 
@@ -129,6 +132,72 @@ public sealed class DescriptorSetLayouts : IDisposable
 
         TextureHeapLayout = textureLayout;
 
+        // ===== SET 2: MESH BUFFERS + MESHLETS =====
+        var meshVertexBinding = new DescriptorSetLayoutBinding
+        {
+            Binding = 0,
+            DescriptorType = DescriptorType.StorageBuffer,
+            DescriptorCount = 1,
+            StageFlags = ShaderStageFlags.MeshBitExt | ShaderStageFlags.TaskBitExt,
+            PImmutableSamplers = null
+        };
+
+        var meshIndexBinding = new DescriptorSetLayoutBinding
+        {
+            Binding = 1,
+            DescriptorType = DescriptorType.StorageBuffer,
+            DescriptorCount = 1,
+            StageFlags = ShaderStageFlags.MeshBitExt | ShaderStageFlags.TaskBitExt,
+            PImmutableSamplers = null
+        };
+
+        var meshletBinding = new DescriptorSetLayoutBinding
+        {
+            Binding = 2,
+            DescriptorType = DescriptorType.StorageBuffer,
+            DescriptorCount = 1,
+            StageFlags = ShaderStageFlags.MeshBitExt | ShaderStageFlags.TaskBitExt,
+            PImmutableSamplers = null
+        };
+
+        var meshletVertexIndicesBinding = new DescriptorSetLayoutBinding
+        {
+            Binding = 3,
+            DescriptorType = DescriptorType.StorageBuffer,
+            DescriptorCount = 1,
+            StageFlags = ShaderStageFlags.MeshBitExt | ShaderStageFlags.TaskBitExt,
+            PImmutableSamplers = null
+        };
+
+        var meshletTriangleIndicesBinding = new DescriptorSetLayoutBinding
+        {
+            Binding = 4,
+            DescriptorType = DescriptorType.StorageBuffer,
+            DescriptorCount = 1,
+            StageFlags = ShaderStageFlags.MeshBitExt | ShaderStageFlags.TaskBitExt,
+            PImmutableSamplers = null
+        };
+
+        DescriptorSetLayoutBinding* meshBindings = stackalloc DescriptorSetLayoutBinding[5];
+        meshBindings[0] = meshVertexBinding;
+        meshBindings[1] = meshIndexBinding;
+        meshBindings[2] = meshletBinding;
+        meshBindings[3] = meshletVertexIndicesBinding;
+        meshBindings[4] = meshletTriangleIndicesBinding;
+
+        var meshLayoutInfo = new DescriptorSetLayoutCreateInfo
+        {
+            SType = StructureType.DescriptorSetLayoutCreateInfo,
+            BindingCount = 5,
+            PBindings = meshBindings
+        };
+
+        DescriptorSetLayout meshLayout;
+        if (_vk.CreateDescriptorSetLayout(_device, &meshLayoutInfo, null, out meshLayout) != Result.Success)
+            throw new InvalidOperationException("Failed to create mesh buffers descriptor set layout.");
+
+        MeshBuffersLayout = meshLayout;
+
         Console.WriteLine("✓ Descriptor layouts created (bindless single binding per set)");
     }
 
@@ -144,6 +213,12 @@ public sealed class DescriptorSetLayouts : IDisposable
         {
             _vk.DestroyDescriptorSetLayout(_device, TextureHeapLayout, null);
             TextureHeapLayout = default;
+        }
+
+        if (MeshBuffersLayout.Handle != 0)
+        {
+            _vk.DestroyDescriptorSetLayout(_device, MeshBuffersLayout, null);
+            MeshBuffersLayout = default;
         }
     }
 }

@@ -19,10 +19,11 @@ public static class ShaderCompiler
         string spirvPath = Path.ChangeExtension(glslSourcePath, $".{GetStageExtension(stage)}.spv");
 
         // Use glslc to compile
+        var targetArgs = GetTargetArgs(stage);
         var psi = new ProcessStartInfo
         {
             FileName = "glslc",
-            Arguments = $"-fshader-stage={GetGlslcStage(stage)} -o \"{spirvPath}\" \"{glslSourcePath}\"",
+            Arguments = $"-fshader-stage={GetGlslcStage(stage)} {targetArgs} -o \"{spirvPath}\" \"{glslSourcePath}\"",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -79,6 +80,8 @@ public static class ShaderCompiler
         ShaderStage.Geometry => "geom",
         ShaderStage.TessellationControl => "tesc",
         ShaderStage.TessellationEvaluation => "tese",
+        ShaderStage.Mesh => "mesh",
+        ShaderStage.Task => "task",
         _ => throw new ArgumentException($"Unknown shader stage: {stage}")
     };
 
@@ -90,7 +93,16 @@ public static class ShaderCompiler
         ShaderStage.Geometry => "geometry",
         ShaderStage.TessellationControl => "tess_control",
         ShaderStage.TessellationEvaluation => "tess_eval",
+        ShaderStage.Mesh => "mesh",
+        ShaderStage.Task => "task",
         _ => throw new ArgumentException($"Unknown shader stage: {stage}")
+    };
+
+    private static string GetTargetArgs(ShaderStage stage) => stage switch
+    {
+        ShaderStage.Mesh => "--target-env=vulkan1.2 --target-spv=spv1.4",
+        ShaderStage.Task => "--target-env=vulkan1.2 --target-spv=spv1.4",
+        _ => string.Empty
     };
 }
 
@@ -101,5 +113,7 @@ public enum ShaderStage
     Compute,
     Geometry,
     TessellationControl,
-    TessellationEvaluation
+    TessellationEvaluation,
+    Mesh,
+    Task
 }

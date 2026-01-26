@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: MPL-2.0
+
+#version 460
+#extension GL_EXT_mesh_shader : require
+
+layout(local_size_x = 1) in;
+
+layout(push_constant) uniform PushConstants
+{
+    mat4 model;
+    mat4 view;
+    mat4 projection;
+    uint materialIndex;
+    uint vertexOffset;
+    uint indexOffset;
+    uint indexCount;
+    uint vertexCount;
+    uint meshletOffset;
+    uint meshletCount;
+    float meshBoundsRadius;
+    uint screenWidth;
+    uint screenHeight;
+    uint debugMeshlets;
+    uint lightCount;
+    uint lightBufferIndex;
+    uint tiledLightHeaderBufferIndex;
+    uint tiledLightIndicesBufferIndex;
+    uint padding;
+} pc;
+
+void main()
+{
+    if (gl_LocalInvocationIndex == 0)
+    {
+        vec4 viewPos = pc.view * pc.model * vec4(0.0, 0.0, 0.0, 1.0);
+        float dist = max(0.001, abs(viewPos.z));
+        float projectedRadius = pc.meshBoundsRadius * pc.projection[1][1] / dist;
+        float pixelRadius = projectedRadius * (float(pc.screenHeight) * 0.5);
+
+        uint count = pc.meshletCount;
+        if (pixelRadius < 8.0)
+            count = max(1u, count / 4u);
+        else if (pixelRadius < 16.0)
+            count = max(1u, count / 2u);
+
+        EmitMeshTasksEXT(count, 1, 1);
+    }
+}

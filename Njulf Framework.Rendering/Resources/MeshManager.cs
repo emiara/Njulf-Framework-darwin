@@ -128,6 +128,9 @@ public class MeshManager : IDisposable
     public (Buffer VertexBuffer, Buffer IndexBuffer) GetMeshBuffers()
         => (_meshBuffer.VertexBuffer, _meshBuffer.IndexBuffer);
 
+    public (Buffer MeshletBuffer, Buffer MeshletVertexIndicesBuffer, Buffer MeshletTriangleIndicesBuffer) GetMeshletBuffers()
+        => (_meshBuffer.MeshletBuffer, _meshBuffer.MeshletVertexIndicesBuffer, _meshBuffer.MeshletTriangleIndicesBuffer);
+
     public void Dispose()
     {
         _meshBuffer?.Dispose();

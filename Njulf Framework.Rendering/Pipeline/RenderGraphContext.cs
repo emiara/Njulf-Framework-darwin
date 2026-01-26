@@ -58,6 +58,16 @@ public class RenderGraphContext(uint width, uint height, BindlessDescriptorHeap 
     public System.Numerics.Matrix4x4 ViewProjection { get; set; }
 
     /// <summary>
+    /// View matrix for the current frame.
+    /// </summary>
+    public System.Numerics.Matrix4x4 View { get; set; }
+
+    /// <summary>
+    /// Projection matrix for the current frame.
+    /// </summary>
+    public System.Numerics.Matrix4x4 Projection { get; set; }
+
+    /// <summary>
     /// Camera position in world space.
     /// </summary>
     public System.Numerics.Vector3 CameraPosition { get; set; }
@@ -66,4 +76,29 @@ public class RenderGraphContext(uint width, uint height, BindlessDescriptorHeap 
     /// Mesh manager for binding and drawing consolidated buffers.
     /// </summary>
     public MeshManager? MeshManager { get; set; }
+
+    /// <summary>
+    /// Descriptor set for mesh vertex/index buffers.
+    /// </summary>
+    public DescriptorSet MeshBuffersSet { get; set; }
+
+    /// <summary>
+    /// Total light count for this frame.
+    /// </summary>
+    public uint LightCount { get; set; }
+
+    /// <summary>
+    /// Bindless buffer index for the light buffer.
+    /// </summary>
+    public uint LightBufferIndex { get; set; }
+
+    /// <summary>
+    /// Bindless buffer index for tiled light headers.
+    /// </summary>
+    public uint TiledLightHeaderBufferIndex { get; set; }
+
+    /// <summary>
+    /// Bindless buffer index for tiled light indices.
+    /// </summary>
+    public uint TiledLightIndicesBufferIndex { get; set; }
 }
