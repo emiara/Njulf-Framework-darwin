@@ -23,6 +23,7 @@
 
     <ItemGroup>
       <Folder Include="RayTracing\" />
+      <Folder Include="Resources\GLTF\" />
     </ItemGroup>
 
     <ItemGroup>
