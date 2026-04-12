@@ -59,21 +59,74 @@ public class RenderingData
     }
     
     /// <summary>
+    /// Alpha mode for material transparency.
+    /// </summary>
+    public enum AlphaMode
+    {
+        Opaque,  // Fully opaque
+        Mask,    // Binary transparency with cutoff
+        Blend    // Alpha blending
+    }
+
+    /// <summary>
     /// Material properties for rendering.
-    /// Defines which shader and textures to use.
+    /// Supports full GLTF 2.0 PBR Metallic-Roughness workflow.
     /// </summary>
     public class Material : IDisposable
     {
         public string Name { get; set; }
         public string ShaderPath { get; set; }
-        public string DiffuseTexturePath { get; set; }
-        public Vector4 Color { get; set; } = Vector4.One;
 
-        public Material(string name, string shaderPath, string diffuseTexturePath = "")
+        // PBR Metallic-Roughness Properties
+        public string BaseColorTexturePath { get; set; }
+        public Vector4 BaseColorFactor { get; set; } = Vector4.One;
+
+        public string MetallicRoughnessTexturePath { get; set; }
+        public float MetallicFactor { get; set; } = 1.0f;
+        public float RoughnessFactor { get; set; } = 1.0f;
+
+        // Additional Texture Maps
+        public string NormalTexturePath { get; set; }
+        public float NormalScale { get; set; } = 1.0f;
+
+        public string OcclusionTexturePath { get; set; }
+        public float OcclusionStrength { get; set; } = 1.0f;
+
+        public string EmissiveTexturePath { get; set; }
+        public Vector3 EmissiveFactor { get; set; } = Vector3.Zero;
+
+        // Alpha and Rendering Properties
+        public AlphaMode AlphaMode { get; set; } = AlphaMode.Opaque;
+        public float AlphaCutoff { get; set; } = 0.5f;
+        public bool DoubleSided { get; set; } = false;
+
+        // Texture Coordinate Sets (for GLTF multi-UV support)
+        public int BaseColorTexCoord { get; set; } = 0;
+        public int MetallicRoughnessTexCoord { get; set; } = 0;
+        public int NormalTexCoord { get; set; } = 0;
+        public int OcclusionTexCoord { get; set; } = 0;
+        public int EmissiveTexCoord { get; set; } = 0;
+
+        // Legacy compatibility
+        [Obsolete("Use BaseColorTexturePath instead")]
+        public string DiffuseTexturePath
+        {
+            get => BaseColorTexturePath;
+            set => BaseColorTexturePath = value;
+        }
+
+        [Obsolete("Use BaseColorFactor instead")]
+        public Vector4 Color
+        {
+            get => BaseColorFactor;
+            set => BaseColorFactor = value;
+        }
+
+        public Material(string name, string shaderPath, string baseColorTexturePath = "")
         {
             Name = name;
             ShaderPath = shaderPath;
-            DiffuseTexturePath = diffuseTexturePath;
+            BaseColorTexturePath = baseColorTexturePath;
         }
 
         public void Dispose()
