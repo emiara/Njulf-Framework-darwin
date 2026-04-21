@@ -63,15 +63,15 @@ public class AssetCache
 
         if (_referenceCounts.TryGetValue(filePath, out var refCount))
         {
-         if (refCount <= 1)
-         {
-             _referenceCounts.TryRemove(filePath, out _);
-             _cache.TryRemove(filePath, out _);
-         }
-         else
-         {
-             _referenceCounts[filePath] = refCount - 1;
-         }
+            if (refCount <= 1)
+            {
+                _referenceCounts.TryRemove(filePath, out _);
+                _cache.TryRemove(filePath, out _);
+            }
+            else
+            {
+                _referenceCounts[filePath] = refCount - 1;
+            }
         }
     }
 

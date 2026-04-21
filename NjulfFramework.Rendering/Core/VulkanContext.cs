@@ -300,10 +300,10 @@ public unsafe class VulkanContext : IDisposable
             var layerNames = enableValidation ? GetValidationLayers() : Array.Empty<string>();
 
             // Marshal to unmanaged memory
-            var layerNamesPointers = stackalloc byte*[layerNames.Length];
+            var layerNamesPointers = stackalloc nint[layerNames.Length];
             for (int i = 0; i < layerNames.Length; i++)
             {
-                layerNamesPointers[i] = (byte*)Marshal.StringToHGlobalAnsi(layerNames[i]);
+                layerNamesPointers[i] = (nint)Marshal.StringToHGlobalAnsi(layerNames[i]);
             }
             var createInfo = new DeviceCreateInfo
             {
@@ -316,7 +316,7 @@ public unsafe class VulkanContext : IDisposable
                 EnabledExtensionCount = (uint)extensionPtrs.Count,
                 PpEnabledExtensionNames = (byte**)extensionPtr,
                 EnabledLayerCount = (uint)layerNames.Length,
-                PpEnabledLayerNames = layerNamesPointers 
+                PpEnabledLayerNames = (byte**)layerNamesPointers
             };
 
             // Copy queue create infos
@@ -335,6 +335,12 @@ public unsafe class VulkanContext : IDisposable
             _vk.GetDeviceQueue(_device, _transferQueueFamily, 0, out _transferQueue);
 
             Marshal.FreeHGlobal((nint)createInfo.PQueueCreateInfos);
+
+            // Free layer names - they were allocated with StringToHGlobalAnsi and must be freed
+            for (int i = 0; i < layerNames.Length; i++)
+            {
+                Marshal.FreeHGlobal((nint)layerNamesPointers[i]);
+            }
         }
         
         foreach (var ptr in extensionPtrs)

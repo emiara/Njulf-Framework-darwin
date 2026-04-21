@@ -14,6 +14,7 @@ namespace NjulfFramework.Assets;
 public class AssimpImporter : IDisposable
 {
     private readonly Assimp _assimp;
+    private IntPtr? _lastScenePtr;  // Tracks the most recently imported scene
 
     /// <summary>
     /// Constructor
@@ -47,13 +48,34 @@ public class AssimpImporter : IDisposable
                 if (scene == null)
                     throw new InvalidOperationException("Failed to import scene: " + _assimp.GetErrorStringS());
 
+                // Store the pointer for later cleanup
+                _lastScenePtr = (IntPtr)scene;
                 return (IntPtr)scene;
             }
         });
     }
 
+    /// <summary>
+    /// Free the last imported scene if it exists
+    /// </summary>
+    public void FreeLastScene()
+    {
+        if (_lastScenePtr.HasValue)
+        {
+            unsafe
+            {
+                _assimp.FreeScene((Scene*)_lastScenePtr.Value);
+            }
+            _lastScenePtr = null;
+        }
+    }
+
+    /// <summary>
+    /// Dispose of the importer and free any pending scene
+    /// </summary>
     public void Dispose()
     {
+        FreeLastScene();
         _assimp?.Dispose();
     }
 }

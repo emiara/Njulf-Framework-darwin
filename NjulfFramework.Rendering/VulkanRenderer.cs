@@ -621,7 +621,10 @@ public unsafe class VulkanRenderer : IDisposable
 
         _renderGraph?.Execute(commandBuffer, rgContext);
 
-        RecordRenderCommands(commandBuffer, imageIndex, frameIndex);
+        // Transition: COLOR_ATTACHMENT_OPTIMAL -> PRESENT_SRC_KHR before presenting
+        TransitionImageLayout(commandBuffer, swapchainImage,
+            ImageLayout.ColorAttachmentOptimal, ImageLayout.PresentSrcKhr);
+        _swapchainImageLayouts![imageIndex] = ImageLayout.PresentSrcKhr;
 
         _commandBufferManager.EndRecording(commandBuffer);
 
