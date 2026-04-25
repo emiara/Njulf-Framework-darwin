@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// forward_plus.frag - Forward+ lighting fragment shader
+// forward_plus.frag - Forward+ lighting fragment shader with PBR
 
 #version 460 core
 #extension GL_EXT_nonuniform_qualifier : require
@@ -74,6 +74,72 @@ struct TiledLightHeader
 };
 
 // ============================================================================
+// PBR Material Structure
+// ============================================================================
+
+struct PBRMaterial
+{
+    vec4 baseColorFactor;
+    float metallicFactor;
+    float roughnessFactor;
+    int baseColorTextureIndex;
+    int metallicRoughnessTextureIndex;
+    int normalTextureIndex;
+    int occlusionTextureIndex;
+    int emissiveTextureIndex;
+    float normalScale;
+    float occlusionStrength;
+    vec3 emissiveFactor;
+};
+
+// ============================================================================
+// PBR Functions
+// ============================================================================
+
+// GGX/Trowbridge-Reitz normal distribution function
+float DistributionGGX(vec3 N, vec3 H, float roughness)
+{
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH * NdotH;
+
+    float nom = a2;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = 3.14159265359 * denom * denom;
+
+    return nom / denom;
+}
+
+// Geometry function using Smith's method (GGX)
+float GeometrySchlickGGX(float NdotV, float roughness)
+{
+    float r = (roughness + 1.0);
+    float k = (r * r) / 8.0;
+
+    float nom = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+
+    return nom / denom;
+}
+
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
+{
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+    return ggx1 * ggx2;
+}
+
+// Fresnel equation using Schlick approximation
+vec3 fresnelSchlick(float cosTheta, vec3 F0)
+{
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+// ============================================================================
 // Utility Functions
 // ============================================================================
 
@@ -125,34 +191,6 @@ uint getLightIndex(uint globalIdx)
     return buffers[pc.tiledLightIndicesBufferIndex].data[globalIdx];
 }
 
-/// Compute Blinn-Phong lighting contribution from a single light.
-vec3 computeLightContribution(vec3 lightPos, vec3 lightColor, float lightIntensity,
-float lightRadius, vec3 fragmentPos, vec3 normal, vec3 albedo)
-{
-    vec3 toLight = lightPos - fragmentPos;
-    float distance = length(toLight);
-    if (distance > lightRadius)
-    return vec3(0.0);
-    vec3 lightDir = normalize(toLight);
-
-    // Attenuation (inverse square law)
-    float attenuation = 1.0 / (distance * distance * 0.1 + 1.0);
-
-    // Lambertian diffuse
-    float diffuse = max(dot(normal, lightDir), 0.0);
-
-    // View direction (approximate from fragment position)
-    vec3 viewDir = normalize(-fragmentPos);
-
-    // Blinn-Phong specular
-    vec3 halfDir = normalize(lightDir + viewDir);
-    float specular = pow(max(dot(normal, halfDir), 0.0), 32.0);
-
-    // Combine
-    vec3 contribution = (diffuse * albedo + specular * 0.5) * lightColor * lightIntensity * attenuation;
-    return contribution;
-}
-
 // ============================================================================
 // Main Fragment Shader
 // ============================================================================
@@ -171,16 +209,67 @@ void main()
     }
 
     // Get material data (simplified - would read from buffer in real implementation)
-    vec3 albedo = vec3(0.8, 0.8, 0.8);// Default white
+    PBRMaterial material;
+    material.baseColorFactor = vec4(0.8, 0.8, 0.8, 1.0); // Default white
+    material.metallicFactor = 0.5;
+    material.roughnessFactor = 0.5;
+    material.baseColorTextureIndex = -1; // No texture
+    material.metallicRoughnessTextureIndex = -1;
+    material.normalTextureIndex = -1;
+    material.occlusionTextureIndex = -1;
+    material.emissiveTextureIndex = -1;
+    material.normalScale = 1.0;
+    material.occlusionStrength = 1.0;
+    material.emissiveFactor = vec3(0.0);
+
+    // Sample textures if available
+    vec3 albedo = material.baseColorFactor.rgb;
+    if (material.baseColorTextureIndex >= 0)
+    {
+        albedo = pow(texture(textures[material.baseColorTextureIndex], inTexCoord).rgb, vec3(2.2));
+    }
+
+    float metallic = material.metallicFactor;
+    float roughness = material.roughnessFactor;
+    if (material.metallicRoughnessTextureIndex >= 0)
+    {
+        vec4 mrSample = texture(textures[material.metallicRoughnessTextureIndex], inTexCoord);
+        metallic = mrSample.b; // Metallic in blue channel
+        roughness = mrSample.g; // Roughness in green channel
+    }
+
+    // Normal mapping
     vec3 normal = inNormal;
     float nlen = length(normal);
     if (nlen < 1e-5)
-    normal = vec3(0.0, 1.0, 0.0);
+        normal = vec3(0.0, 1.0, 0.0);
     else
-    normal /= nlen;
+        normal /= nlen;
 
-    // Ambient lighting
-    vec3 shading = albedo * 0.2;
+    if (material.normalTextureIndex >= 0)
+    {
+        vec3 tangentNormal = texture(textures[material.normalTextureIndex], inTexCoord).xyz * 2.0 - 1.0;
+        tangentNormal.xy *= material.normalScale;
+        tangentNormal = normalize(tangentNormal);
+        
+        // TBN matrix would be needed here for proper normal mapping
+        // For now, just apply as perturbation
+        normal = normalize(normal + tangentNormal * 0.1);
+    }
+
+    // Ambient occlusion
+    float ao = 1.0;
+    if (material.occlusionTextureIndex >= 0)
+    {
+        ao = texture(textures[material.occlusionTextureIndex], inTexCoord).r;
+        ao = mix(1.0, ao, material.occlusionStrength);
+    }
+
+    // View direction
+    vec3 V = normalize(-inPosition);
+
+    // Calculate lighting
+    vec3 Lo = vec3(0.0);
 
     if (pc.lightCount > 0u)
     {
@@ -193,17 +282,47 @@ void main()
             uint lightIdx = getLightIndex(header.lightListOffset + i);
             GPULight light = getLight(lightIdx);
             if (light.lightTypeData.x != 0u)
-            continue;
+                continue;
 
             vec3 lightPos = light.positionRadius.xyz;
             float lightRadius = light.positionRadius.w;
             vec3 lightColor = light.colorIntensity.xyz;
             float lightIntensity = light.colorIntensity.w;
 
-            shading += computeLightContribution(lightPos, lightColor, lightIntensity,
-            lightRadius, inPosition, normal, albedo);
+            vec3 L = normalize(lightPos - inPosition);
+            vec3 H = normalize(V + L);
+            float distance = length(lightPos - inPosition);
+            float attenuation = 1.0 / (distance * distance * 0.1 + 1.0);
+
+            // Cook-Torrance BRDF
+            float NDF = DistributionGGX(normal, H, roughness);
+            float G = GeometrySmith(normal, V, L, roughness);
+            vec3 F = fresnelSchlick(max(dot(H, V), 0.0), mix(vec3(0.04), albedo, metallic));
+
+            vec3 numerator = NDF * G * F;
+            float denominator = 4.0 * max(dot(normal, V), 0.0) * max(dot(normal, L), 0.0) + 0.0001;
+            vec3 specular = numerator / denominator;
+
+            // kS is Fresnel
+            vec3 kS = F;
+            vec3 kD = vec3(1.0) - kS;
+            kD *= 1.0 - metallic;
+
+            float NdotL = max(dot(normal, L), 0.0);
+            Lo += (kD * albedo / 3.14159265359 + specular) * lightColor * lightIntensity * NdotL * attenuation;
         }
     }
 
-    outColor = vec4(shading, 1.0);
+    // Ambient lighting (simplified IBL would go here)
+    vec3 ambient = vec3(0.03) * albedo * ao;
+
+    vec3 color = ambient + Lo;
+
+    // HDR tonemapping (simple Reinhard)
+    color = color / (color + vec3(1.0));
+
+    // Gamma correction
+    color = pow(color, vec3(1.0/2.2));
+
+    outColor = vec4(color, 1.0);
 }

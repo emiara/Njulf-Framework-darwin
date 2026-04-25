@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: MPL-2.0
 
 using System;
 using System.Collections.Generic;
@@ -20,10 +20,12 @@ public class SceneDataBuilder : IDisposable
     private readonly List<GPUMaterial> _materialData = new();
     private readonly List<GPUMeshData> _meshData = new();
     private MeshManager? _meshManager;
+    private TextureManager? _textureManager;
 
     // Cache to avoid duplicate materials/meshes
     private readonly Dictionary<RenderingData.Material, uint> _materialIndexMap = new();
     private readonly Dictionary<RenderingData.Mesh, uint> _meshIndexMap = new();
+    private readonly Dictionary<string, uint> _texturePathToIndexMap = new();
 
     public SceneDataBuilder()
     {
@@ -32,6 +34,11 @@ public class SceneDataBuilder : IDisposable
     public void SetMeshManager(MeshManager? meshManager)
     {
         _meshManager = meshManager;
+    }
+
+    public void SetTextureManager(TextureManager? textureManager)
+    {
+        _textureManager = textureManager;
     }
 
     /// <summary>
@@ -45,6 +52,7 @@ public class SceneDataBuilder : IDisposable
         _meshData.Clear();
         _materialIndexMap.Clear();
         _meshIndexMap.Clear();
+        _texturePathToIndexMap.Clear();
     }
 
     /// <summary>
@@ -82,16 +90,40 @@ public class SceneDataBuilder : IDisposable
             return idx;
 
         var newIdx = (uint)_materialData.Count;
+        
+        // Get texture indices for PBR materials
+        uint baseColorTexIdx = GetOrAddTextureIndex(material.BaseColorTexturePath);
+        uint normalTexIdx = GetOrAddTextureIndex(material.NormalTexturePath);
+        uint metallicRoughnessTexIdx = GetOrAddTextureIndex(material.MetallicRoughnessTexturePath);
+        uint occlusionTexIdx = GetOrAddTextureIndex(material.OcclusionTexturePath);
+        uint emissiveTexIdx = GetOrAddTextureIndex(material.EmissiveTexturePath);
+
         var gpuMaterial = new GPUMaterial(
-            material.Color,
-            uint.MaxValue, // TODO: get from texture manager
-            uint.MaxValue,
-            uint.MaxValue
+            material.BaseColorFactor,
+            baseColorTexIdx,
+            normalTexIdx,
+            metallicRoughnessTexIdx
         );
 
         _materialData.Add(gpuMaterial);
         _materialIndexMap[material] = newIdx;
         return newIdx;
+    }
+
+    /// <summary>
+    /// Get or add a texture index for a texture path
+    /// </summary>
+    private uint GetOrAddTextureIndex(string texturePath)
+    {
+        if (string.IsNullOrEmpty(texturePath))
+            return uint.MaxValue;
+
+        if (_texturePathToIndexMap.TryGetValue(texturePath, out var idx))
+            return idx;
+
+        // TODO: Load texture and get index from texture manager
+        // For now, return uint.MaxValue (no texture)
+        return uint.MaxValue;
     }
 
     /// <summary>
@@ -223,5 +255,6 @@ public class SceneDataBuilder : IDisposable
         _meshData.Clear();
         _materialIndexMap.Clear();
         _meshIndexMap.Clear();
+        _texturePathToIndexMap.Clear();
     }
 }
