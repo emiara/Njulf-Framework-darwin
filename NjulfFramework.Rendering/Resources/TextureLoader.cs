@@ -4,6 +4,7 @@ using System;
 using System.IO;
 using Silk.NET.Vulkan;
 using StbImageSharp;
+using Buffer = System.Buffer;
 
 namespace NjulfFramework.Rendering.Resources;
 
@@ -48,7 +49,7 @@ public static class TextureLoader
                 Array.Fill(pixels, (byte)255); // White fallback
             }
 
-            return (pixels, result.Width, result.Height, result.Comp);
+            return (pixels, result.Width, result.Height, (int)result.Comp);
         }
         catch (Exception ex)
         {
