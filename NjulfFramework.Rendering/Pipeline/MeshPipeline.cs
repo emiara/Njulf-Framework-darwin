@@ -40,17 +40,12 @@ public class MeshPipeline : IDisposable
         var fragSpirv = ShaderCompiler.CompileGlslToSpirv(fragShaderPath, ShaderStage.Fragment);
         byte[]? taskSpirv = null;
         if (!string.IsNullOrWhiteSpace(taskShaderPath))
-        {
             taskSpirv = ShaderCompiler.CompileGlslToSpirv(taskShaderPath, ShaderStage.Task);
-        }
 
         ShaderModule taskShaderModule = default;
         var meshShaderModule = CreateShaderModule(meshSpirv);
         var fragShaderModule = CreateShaderModule(fragSpirv);
-        if (taskSpirv != null)
-        {
-            taskShaderModule = CreateShaderModule(taskSpirv);
-        }
+        if (taskSpirv != null) taskShaderModule = CreateShaderModule(taskSpirv);
 
         try
         {
@@ -86,10 +81,7 @@ public class MeshPipeline : IDisposable
 
             var shaderStages = stackalloc PipelineShaderStageCreateInfo[stageCount];
             var stageIndex = 0;
-            if (taskSpirv != null)
-            {
-                shaderStages[stageIndex++] = taskStageInfo;
-            }
+            if (taskSpirv != null) shaderStages[stageIndex++] = taskStageInfo;
             shaderStages[stageIndex++] = meshStageInfo;
             shaderStages[stageIndex++] = fragStageInfo;
 
@@ -176,9 +168,7 @@ public class MeshPipeline : IDisposable
 
                 if (vk.CreatePipelineLayout(device, pipelineLayoutInfo, null, out PipelineLayout)
                     != Result.Success)
-                {
                     throw new Exception("Failed to create mesh pipeline layout");
-                }
             }
 
             var colorAttachmentFormat = _colorFormat;
@@ -213,10 +203,8 @@ public class MeshPipeline : IDisposable
                 BasePipelineIndex = -1
             };
 
-            if (_vk.CreateGraphicsPipelines(_device, default, 1, &pipelineInfo, null, out var pipeline) != Result.Success)
-            {
-                throw new Exception("Failed to create mesh graphics pipeline");
-            }
+            if (_vk.CreateGraphicsPipelines(_device, default, 1, &pipelineInfo, null, out var pipeline) !=
+                Result.Success) throw new Exception("Failed to create mesh graphics pipeline");
 
             _pipeline = pipeline;
         }
@@ -243,9 +231,7 @@ public class MeshPipeline : IDisposable
             };
 
             if (_vk.CreateShaderModule(_device, &createInfo, null, out var shaderModule) != Result.Success)
-            {
                 throw new Exception("Failed to create shader module");
-            }
 
             return shaderModule;
         }
@@ -253,14 +239,8 @@ public class MeshPipeline : IDisposable
 
     public unsafe void Dispose()
     {
-        if (_pipeline.Handle != 0)
-        {
-            _vk.DestroyPipeline(_device, _pipeline, null);
-        }
+        if (_pipeline.Handle != 0) _vk.DestroyPipeline(_device, _pipeline, null);
 
-        if (PipelineLayout.Handle != 0)
-        {
-            _vk.DestroyPipelineLayout(_device, PipelineLayout, null);
-        }
+        if (PipelineLayout.Handle != 0) _vk.DestroyPipelineLayout(_device, PipelineLayout, null);
     }
 }

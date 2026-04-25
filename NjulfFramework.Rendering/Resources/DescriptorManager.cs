@@ -1,7 +1,6 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
 using Silk.NET.Vulkan;
-
 using System;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
@@ -11,11 +10,11 @@ public class DescriptorManager : IDisposable
 {
     private readonly Vk _vk;
     private readonly Device _device;
-    
+
     private DescriptorSetLayout _descriptorSetLayout;
     private DescriptorPool _descriptorPool;
     private DescriptorSet[] _descriptorSets = null!;
-    
+
     public DescriptorSetLayout DescriptorSetLayout => _descriptorSetLayout;
     public DescriptorSet[] DescriptorSets => _descriptorSets;
 
@@ -23,7 +22,7 @@ public class DescriptorManager : IDisposable
     {
         _vk = vk;
         _device = device;
-        
+
         CreateDescriptorSetLayout();
         CreateDescriptorPool(framesInFlight);
         AllocateDescriptorSets(framesInFlight);
@@ -48,10 +47,8 @@ public class DescriptorManager : IDisposable
         };
 
         if (_vk.CreateDescriptorSetLayout(_device, &layoutInfo, null, out _descriptorSetLayout) != Result.Success)
-        {
             throw new Exception("Failed to create descriptor set layout");
-        }
-        
+
         Console.WriteLine("✓ Descriptor set layout created");
     }
 
@@ -72,10 +69,8 @@ public class DescriptorManager : IDisposable
         };
 
         if (_vk.CreateDescriptorPool(_device, &poolInfo, null, out _descriptorPool) != Result.Success)
-        {
             throw new Exception("Failed to create descriptor pool");
-        }
-        
+
         Console.WriteLine("✓ Descriptor pool created");
     }
 
@@ -98,23 +93,19 @@ public class DescriptorManager : IDisposable
             fixed (DescriptorSet* descriptorSetsPtr = _descriptorSets)
             {
                 if (_vk.AllocateDescriptorSets(_device, &allocInfo, descriptorSetsPtr) != Result.Success)
-                {
                     throw new Exception("Failed to allocate descriptor sets");
-                }
             }
         }
-        
+
         Console.WriteLine($"✓ Allocated {framesInFlight} descriptor sets");
     }
 
     public unsafe void UpdateDescriptorSet(uint frameIndex, Buffer uniformBuffer, ulong bufferSize)
     {
-        if (frameIndex >= _descriptorSets.Length)
-        {
-            throw new ArgumentOutOfRangeException(nameof(frameIndex));
-        }
+        if (frameIndex >= _descriptorSets.Length) throw new ArgumentOutOfRangeException(nameof(frameIndex));
 
-        Console.WriteLine($"Updating descriptor set {frameIndex} with buffer handle {uniformBuffer.Handle}, size {bufferSize}");
+        Console.WriteLine(
+            $"Updating descriptor set {frameIndex} with buffer handle {uniformBuffer.Handle}, size {bufferSize}");
 
         var bufferInfo = new DescriptorBufferInfo
         {
@@ -137,21 +128,15 @@ public class DescriptorManager : IDisposable
         };
 
         _vk.UpdateDescriptorSets(_device, 1, &descriptorWrite, 0, null);
-        
+
         Console.WriteLine($"✓ Descriptor set {frameIndex} updated successfully");
     }
 
 
     public unsafe void Dispose()
     {
-        if (_descriptorPool.Handle != 0)
-        {
-            _vk.DestroyDescriptorPool(_device, _descriptorPool, null);
-        }
+        if (_descriptorPool.Handle != 0) _vk.DestroyDescriptorPool(_device, _descriptorPool, null);
 
-        if (_descriptorSetLayout.Handle != 0)
-        {
-            _vk.DestroyDescriptorSetLayout(_device, _descriptorSetLayout, null);
-        }
+        if (_descriptorSetLayout.Handle != 0) _vk.DestroyDescriptorSetLayout(_device, _descriptorSetLayout, null);
     }
 }

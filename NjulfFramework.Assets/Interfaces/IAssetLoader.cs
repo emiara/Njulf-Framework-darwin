@@ -26,7 +26,6 @@ public interface IAssetLoader : IDisposable
     /// </summary>
     /// <param name="filePath">Path to the model file</param>
     /// <returns>Task containing the loaded framework model</returns>
-    
     Task<FrameworkModel> LoadModelAsync(string filePath, CancellationToken cancellationToken = default);
 
     /// <summary>

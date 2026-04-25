@@ -6,7 +6,6 @@ using BepuPhysics;
 
 namespace NjulfFramework.Core;
 
-
 /// <summary>
 /// Core framework base class that games will inherit from.
 /// Provides the main game loop and lifecycle hooks.
@@ -16,7 +15,7 @@ public abstract class GameFramework
     protected IWindow? Window { get; private set; }
     protected Simulation? PhysicsSimulation { get; private set; }
     protected float DeltaTime { get; private set; }
-    
+
     private const uint WindowWidth = 1280;
     private const uint WindowHeight = 720;
     private const string WindowTitle = "Njulf Framework Game";
@@ -28,7 +27,7 @@ public abstract class GameFramework
     {
         InitializeWindow();
         InitializePhysics();
-        
+
         if (Window == null)
             throw new InvalidOperationException("Window failed to initialize");
 
@@ -53,7 +52,7 @@ public abstract class GameFramework
             Title = WindowTitle,
             Size = new Vector2D<int>((int)WindowWidth, (int)WindowHeight),
             VSync = true,
-            API = new GraphicsAPI()
+            API = new GraphicsAPI
             {
                 API = ContextAPI.Vulkan,
                 Profile = ContextProfile.Core,
@@ -88,10 +87,10 @@ public abstract class GameFramework
     private void OnUpdate(double deltaTimeSeconds)
     {
         DeltaTime = (float)deltaTimeSeconds;
-        
+
         // Update physics simulation
         UpdatePhysics(DeltaTime);
-        
+
         // Call the game's update method
         Update(DeltaTime);
     }
@@ -103,10 +102,10 @@ public abstract class GameFramework
     {
         // Clear the rendering context
         // TODO: Implement Vulkan clear operations
-        
+
         // Call the game's draw method
         Draw();
-        
+
         // Present the rendered frame
         // TODO: Implement Vulkan presentation
     }

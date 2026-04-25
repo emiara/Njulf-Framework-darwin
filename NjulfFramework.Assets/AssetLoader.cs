@@ -95,7 +95,7 @@ public class AssetLoader : IAssetLoader
     {
         LoadProgress?.Invoke(this, progress);
     }
-    
+
 
     public void Dispose()
     {

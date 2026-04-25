@@ -33,7 +33,10 @@ public class RenderGraph
     /// <summary>
     /// Remove all passes from the graph.
     /// </summary>
-    public void Clear() => _passes.Clear();
+    public void Clear()
+    {
+        _passes.Clear();
+    }
 
     /// <summary>
     /// Execute all render passes in order.
@@ -43,7 +46,6 @@ public class RenderGraph
     public void Execute(CommandBuffer cmd, RenderGraphContext ctx)
     {
         foreach (var pass in _passes)
-        {
             try
             {
                 pass.Execute(cmd, ctx);
@@ -53,7 +55,6 @@ public class RenderGraph
                 Console.WriteLine($"Error executing render pass '{pass.Name}': {ex.Message}");
                 throw;
             }
-        }
     }
 
     /// <summary>

@@ -47,11 +47,11 @@ public sealed class DescriptorSetLayouts : IDisposable
 
         _vk.GetPhysicalDeviceProperties2(_physicalDevice, &properties2);
 
-        uint maxStorageBuffers = Math.Min(
+        var maxStorageBuffers = Math.Min(
             vk12Properties.MaxDescriptorSetUpdateAfterBindStorageBuffers,
             MaxBindlessBuffers);
 
-        uint maxImages = Math.Min(
+        var maxImages = Math.Min(
             vk12Properties.MaxDescriptorSetUpdateAfterBindSampledImages,
             MaxBindlessTextures);
 
@@ -61,9 +61,9 @@ public sealed class DescriptorSetLayouts : IDisposable
         // ===== SET 0: SINGLE LARGE STORAGE BUFFER BINDING =====
         var bufferBinding = new DescriptorSetLayoutBinding
         {
-            Binding = 0,  // Single binding
+            Binding = 0, // Single binding
             DescriptorType = DescriptorType.StorageBuffer,
-            DescriptorCount = maxStorageBuffers,  // 65536 descriptors
+            DescriptorCount = maxStorageBuffers, // 65536 descriptors
             StageFlags = ShaderStageFlags.AllGraphics | ShaderStageFlags.ComputeBit |
                          ShaderStageFlags.MeshBitExt | ShaderStageFlags.TaskBitExt,
             PImmutableSamplers = null
@@ -98,9 +98,9 @@ public sealed class DescriptorSetLayouts : IDisposable
         // ===== SET 1: SINGLE LARGE TEXTURE BINDING =====
         var textureBinding = new DescriptorSetLayoutBinding
         {
-            Binding = 0,  // Single binding
+            Binding = 0, // Single binding
             DescriptorType = DescriptorType.CombinedImageSampler,
-            DescriptorCount = maxImages,  // 65536 descriptors
+            DescriptorCount = maxImages, // 65536 descriptors
             StageFlags = ShaderStageFlags.AllGraphics | ShaderStageFlags.ComputeBit |
                          ShaderStageFlags.MeshBitExt | ShaderStageFlags.TaskBitExt,
             PImmutableSamplers = null
@@ -178,7 +178,7 @@ public sealed class DescriptorSetLayouts : IDisposable
             PImmutableSamplers = null
         };
 
-        DescriptorSetLayoutBinding* meshBindings = stackalloc DescriptorSetLayoutBinding[5];
+        var meshBindings = stackalloc DescriptorSetLayoutBinding[5];
         meshBindings[0] = meshVertexBinding;
         meshBindings[1] = meshIndexBinding;
         meshBindings[2] = meshletBinding;

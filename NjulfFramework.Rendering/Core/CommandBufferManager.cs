@@ -48,9 +48,7 @@ public class CommandBufferManager : IDisposable
         };
 
         if (_vk.CreateCommandPool(_device, &createInfo, null, out _commandPool) != Result.Success)
-        {
             throw new Exception("Failed to create graphics command pool");
-        }
     }
 
     private unsafe void AllocateCommandBuffers(uint count)
@@ -68,9 +66,7 @@ public class CommandBufferManager : IDisposable
         fixed (CommandBuffer* buffersPtr = _commandBuffers)
         {
             if (_vk.AllocateCommandBuffers(_device, &allocInfo, buffersPtr) != Result.Success)
-            {
                 throw new Exception("Failed to allocate graphics command buffers");
-            }
         }
     }
 
@@ -112,7 +108,7 @@ public class CommandBufferManager : IDisposable
 
         TransferCommandBuffers = transferCommandBuffers;
     }
-    
+
 
     public unsafe void BeginRecording(CommandBuffer commandBuffer)
     {
@@ -134,20 +130,14 @@ public class CommandBufferManager : IDisposable
     {
         _vk.ResetCommandBuffer(commandBuffer, CommandBufferResetFlags.ReleaseResourcesBit);
     }
-    
+
 
     public unsafe void Dispose()
     {
         // Destroy graphics command pool (also frees graphics command buffers)
-        if (_commandPool.Handle != 0)
-        {
-            _vk.DestroyCommandPool(_device, _commandPool, null);
-        }
+        if (_commandPool.Handle != 0) _vk.DestroyCommandPool(_device, _commandPool, null);
 
         // Destroy transfer command pool (also frees transfer command buffers)
-        if (_transferCommandPool.Handle != 0)
-        {
-            _vk.DestroyCommandPool(_device, _transferCommandPool, null);
-        }
+        if (_transferCommandPool.Handle != 0) _vk.DestroyCommandPool(_device, _transferCommandPool, null);
     }
 }

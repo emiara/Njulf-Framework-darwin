@@ -90,15 +90,14 @@ public class MaterialConverter
     /// <summary>
     /// Convert PBR properties
     /// </summary>
-    private unsafe void ConvertPBRProperties(Material* assimpMaterial, FrameworkMaterial frameworkMaterial, string basePath)
+    private unsafe void ConvertPBRProperties(Material* assimpMaterial, FrameworkMaterial frameworkMaterial,
+        string basePath)
     {
         // Base color (diffuse color)
-        var color = new System.Numerics.Vector4();
+        var color = new Vector4();
         uint max = 4;
-        if (_assimp.GetMaterialFloatArray(assimpMaterial, AiMatkeyColorDiffuse, 0, 0, (float*)&color, ref max) == Return.Success)
-        {
-            frameworkMaterial.BaseColorFactor = color;
-        }
+        if (_assimp.GetMaterialFloatArray(assimpMaterial, AiMatkeyColorDiffuse, 0, 0, (float*)&color, ref max) ==
+            Return.Success) frameworkMaterial.BaseColorFactor = color;
 
         // Base color texture (diffuse)
         var texPath = GetTexturePath(assimpMaterial, TextureType.Diffuse, basePath);
@@ -126,12 +125,10 @@ public class MaterialConverter
             frameworkMaterial.EmissiveTexturePath = texPath;
 
         // Emissive color
-        var emissiveColor = new System.Numerics.Vector3();
+        var emissiveColor = new Vector3();
         max = 3;
-        if (_assimp.GetMaterialFloatArray(assimpMaterial, AiMatkeyColorEmissive, 0, 0, (float*)&emissiveColor, ref max) == Return.Success)
-        {
-            frameworkMaterial.EmissiveFactor = emissiveColor;
-        }
+        if (_assimp.GetMaterialFloatArray(assimpMaterial, AiMatkeyColorEmissive, 0, 0, (float*)&emissiveColor,
+                ref max) == Return.Success) frameworkMaterial.EmissiveFactor = emissiveColor;
     }
 
     /// <summary>
@@ -140,15 +137,11 @@ public class MaterialConverter
     private unsafe void ConvertAlphaProperties(Material* assimpMaterial, FrameworkMaterial frameworkMaterial)
     {
         // Alpha cutoff (opacity)
-        float opacity = 1.0f;
+        var opacity = 1.0f;
         uint max = 1;
         if (_assimp.GetMaterialFloatArray(assimpMaterial, AiMatkeyOpacity, 0, 0, &opacity, ref max) == Return.Success)
-        {
             if (opacity < 1.0f)
-            {
-                frameworkMaterial.AlphaMode = Models.AlphaMode.Blend;
-            }
-        }
+                frameworkMaterial.AlphaMode = AlphaMode.Blend;
     }
 
     /// <summary>
@@ -156,12 +149,10 @@ public class MaterialConverter
     /// </summary>
     private unsafe void ConvertDoubleSidedProperty(Material* assimpMaterial, FrameworkMaterial frameworkMaterial)
     {
-        int twoSided = 0;
+        var twoSided = 0;
         uint max = 1;
-        if (_assimp.GetMaterialIntegerArray(assimpMaterial, AiMatkeyTwosided, 0, 0, &twoSided, ref max) == Return.Success)
-        {
-            frameworkMaterial.DoubleSided = twoSided != 0;
-        }
+        if (_assimp.GetMaterialIntegerArray(assimpMaterial, AiMatkeyTwosided, 0, 0, &twoSided, ref max) ==
+            Return.Success) frameworkMaterial.DoubleSided = twoSided != 0;
     }
 
     /// <summary>

@@ -50,8 +50,8 @@ public class MeshBuffer : IDisposable
     // CPU-side mesh registry
     public class MeshEntry
     {
-        public uint VertexOffset { get; set; }      // Offset in vertex buffer (in vertices)
-        public uint IndexOffset { get; set; }       // Offset in index buffer (in indices)
+        public uint VertexOffset { get; set; } // Offset in vertex buffer (in vertices)
+        public uint IndexOffset { get; set; } // Offset in index buffer (in indices)
         public uint VertexCount { get; set; }
         public uint IndexCount { get; set; }
         public uint MeshletOffset { get; set; }
@@ -84,7 +84,7 @@ public class MeshBuffer : IDisposable
             throw new ArgumentNullException(nameof(mesh));
 
         if (_meshes.ContainsKey(mesh))
-            return;  // Already added
+            return; // Already added
 
         var entry = new MeshEntry
         {
@@ -125,9 +125,9 @@ public class MeshBuffer : IDisposable
 
             _vertexBufferHandle = _bufferManager.AllocateBuffer(
                 (ulong)vertexSize,
-                BufferUsageFlags.VertexBufferBit 
-                    | BufferUsageFlags.StorageBufferBit  // For bindless access
-                    | BufferUsageFlags.TransferDstBit,    // For uploading
+                BufferUsageFlags.VertexBufferBit
+                | BufferUsageFlags.StorageBufferBit // For bindless access
+                | BufferUsageFlags.TransferDstBit, // For uploading
                 MemoryUsage.AutoPreferDevice);
 
             _vertexBuffer = _bufferManager.GetBuffer(_vertexBufferHandle);
@@ -141,9 +141,9 @@ public class MeshBuffer : IDisposable
 
             _indexBufferHandle = _bufferManager.AllocateBuffer(
                 (ulong)indexSize,
-                BufferUsageFlags.IndexBufferBit 
-                    | BufferUsageFlags.StorageBufferBit   // For bindless access
-                    | BufferUsageFlags.TransferDstBit,    // For uploading
+                BufferUsageFlags.IndexBufferBit
+                | BufferUsageFlags.StorageBufferBit // For bindless access
+                | BufferUsageFlags.TransferDstBit, // For uploading
                 MemoryUsage.AutoPreferDevice);
 
             _indexBuffer = _bufferManager.GetBuffer(_indexBufferHandle);
@@ -152,7 +152,7 @@ public class MeshBuffer : IDisposable
 
         if (_meshlets.Count > 0)
         {
-            var meshletSize = (ulong)(_meshlets.Count * System.Runtime.InteropServices.Marshal.SizeOf<GPUMeshlet>());
+            var meshletSize = (ulong)(_meshlets.Count * Marshal.SizeOf<GPUMeshlet>());
             _meshletBufferHandle = _bufferManager.AllocateBuffer(
                 meshletSize,
                 BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
@@ -195,8 +195,8 @@ public class MeshBuffer : IDisposable
         var entry = GetMeshEntry(mesh);
         return new RenderingData.GPUMeshData
         {
-            VertexBufferIndex = 0,      // Bindless index (will be set by BindlessDescriptorHeap)
-            IndexBufferIndex = 1,       // Bindless index
+            VertexBufferIndex = 0, // Bindless index (will be set by BindlessDescriptorHeap)
+            IndexBufferIndex = 1, // Bindless index
             VertexCount = entry.VertexCount,
             IndexCount = entry.IndexCount,
             BoundingBoxMin = new System.Numerics.Vector3(-1),
@@ -232,9 +232,7 @@ public class MeshBuffer : IDisposable
         var entry = GetMeshEntry(mesh);
 
         if (entry.IndexCount > 0)
-        {
             _vk.CmdDrawIndexed(cmd, entry.IndexCount, 1, entry.IndexOffset, (int)entry.VertexOffset, 0);
-        }
     }
 
     /// <summary>
@@ -350,7 +348,7 @@ public class MeshBuffer : IDisposable
         // BufferManager handles actual VMA deallocation
     }
 
-    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential)]
     public struct GPUMeshlet
     {
         public uint VertexOffset;
@@ -406,9 +404,9 @@ public class MeshBuffer : IDisposable
                     if (localVerts.Count + neededNew > MaxVertsPerMeshlet)
                         break;
 
-                    uint l0 = GetOrAddLocalVertex(i0, localMap, localVerts, vertices, ref boundsMin, ref boundsMax);
-                    uint l1 = GetOrAddLocalVertex(i1, localMap, localVerts, vertices, ref boundsMin, ref boundsMax);
-                    uint l2 = GetOrAddLocalVertex(i2, localMap, localVerts, vertices, ref boundsMin, ref boundsMax);
+                    var l0 = GetOrAddLocalVertex(i0, localMap, localVerts, vertices, ref boundsMin, ref boundsMax);
+                    var l1 = GetOrAddLocalVertex(i1, localMap, localVerts, vertices, ref boundsMin, ref boundsMax);
+                    var l2 = GetOrAddLocalVertex(i2, localMap, localVerts, vertices, ref boundsMin, ref boundsMax);
 
                     localTris.Add(l0);
                     localTris.Add(l1);
@@ -451,6 +449,7 @@ public class MeshBuffer : IDisposable
                         if (angle > maxAngle)
                             maxAngle = angle;
                     }
+
                     coneCutoff = MathF.Cos(maxAngle);
                 }
 
@@ -485,7 +484,7 @@ public class MeshBuffer : IDisposable
 
         var srcBuffer = uploadRing.CurrentUploadBuffer;
 
-        var meshletSize = (ulong)(_meshlets.Count * System.Runtime.InteropServices.Marshal.SizeOf<GPUMeshlet>());
+        var meshletSize = (ulong)(_meshlets.Count * Marshal.SizeOf<GPUMeshlet>());
         var meshletCopy = new BufferCopy
         {
             SrcOffset = meshletSrcOffset,

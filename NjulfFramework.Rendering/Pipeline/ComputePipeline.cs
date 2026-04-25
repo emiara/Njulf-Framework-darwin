@@ -47,13 +47,13 @@ public class ComputePipeline : IDisposable
             try
             {
                 var setLayout = bindlessBufferLayout;
-                
+
                 // Create pipeline layout with push constants
                 var pushConstantRange = new PushConstantRange
                 {
                     StageFlags = ShaderStageFlags.ComputeBit,
                     Offset = 0,
-                    Size = 28  // 4 uints = 16 bytes (screen width, height, light count, tile size)
+                    Size = 28 // 4 uints = 16 bytes (screen width, height, light count, tile size)
                 };
 
                 var pipelineLayoutInfo = new PipelineLayoutCreateInfo
@@ -61,7 +61,7 @@ public class ComputePipeline : IDisposable
                     SType = StructureType.PipelineLayoutCreateInfo,
                     PushConstantRangeCount = 1,
                     PPushConstantRanges = &pushConstantRange,
-                    SetLayoutCount = 1,  // Descriptor sets handled via bindless heap
+                    SetLayoutCount = 1, // Descriptor sets handled via bindless heap
                     PSetLayouts = &setLayout
                 };
 
@@ -87,7 +87,8 @@ public class ComputePipeline : IDisposable
                     Layout = PipelineLayout
                 };
 
-                if (_vk.CreateComputePipelines(_device, default, 1, &pipelineInfo, null, out var pipeline) != Result.Success)
+                if (_vk.CreateComputePipelines(_device, default, 1, &pipelineInfo, null, out var pipeline) !=
+                    Result.Success)
                     throw new Exception("Failed to create compute pipeline");
 
                 Pipeline = pipeline;

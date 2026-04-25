@@ -40,7 +40,7 @@ public class ModelProcessor
         };
 
         // Convert materials
-        for (int i = 0; i < scene->MNumMaterials; i++)
+        for (var i = 0; i < scene->MNumMaterials; i++)
         {
             var assimpMaterial = scene->MMaterials[i];
             var frameworkMaterial = _materialConverter.ConvertMaterial(assimpMaterial, basePath);
@@ -48,7 +48,7 @@ public class ModelProcessor
         }
 
         // Convert meshes
-        for (int i = 0; i < scene->MNumMeshes; i++)
+        for (var i = 0; i < scene->MNumMeshes; i++)
         {
             var assimpMesh = scene->MMeshes[i];
             var frameworkMesh = _meshConverter.ConvertMesh(assimpMesh, i);
@@ -75,17 +75,14 @@ public class ModelProcessor
         };
 
         // Add mesh indices for this node
-        for (int i = 0; i < assimpNode->MNumMeshes; i++)
+        for (var i = 0; i < assimpNode->MNumMeshes; i++)
         {
-            int meshIndex = (int)assimpNode->MMeshes[i];
-            if (meshIndex < scene->MNumMeshes)
-            {
-                frameworkNode.MeshIndices.Add(meshIndex);
-            }
+            var meshIndex = (int)assimpNode->MMeshes[i];
+            if (meshIndex < scene->MNumMeshes) frameworkNode.MeshIndices.Add(meshIndex);
         }
 
         // Process children recursively
-        for (int i = 0; i < assimpNode->MNumChildren; i++)
+        for (var i = 0; i < assimpNode->MNumChildren; i++)
         {
             var childNode = BuildSceneHierarchy(assimpNode->MChildren[i], scene);
             frameworkNode.Children.Add(childNode);

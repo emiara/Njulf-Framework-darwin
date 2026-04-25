@@ -29,7 +29,7 @@ public class FramebufferManager : IDisposable
     {
         _framebuffers = new Framebuffer[imageViews.Length];
 
-        for (int i = 0; i < imageViews.Length; i++)
+        for (var i = 0; i < imageViews.Length; i++)
         {
             var attachments = stackalloc ImageView[] { imageViews[i] };
 
@@ -45,22 +45,14 @@ public class FramebufferManager : IDisposable
             };
 
             if (_vk.CreateFramebuffer(_device, &framebufferInfo, null, out _framebuffers[i]) != Result.Success)
-            {
                 throw new Exception($"Failed to create framebuffer {i}");
-            }
         }
-
-        
     }
-    
+
     public unsafe void Dispose()
     {
         foreach (var framebuffer in _framebuffers)
-        {
             if (framebuffer.Handle != 0)
-            {
                 _vk.DestroyFramebuffer(_device, framebuffer, null);
-            }
-        }
     }
 }

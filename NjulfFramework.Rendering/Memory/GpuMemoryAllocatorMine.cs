@@ -36,9 +36,7 @@ public class GpuMemoryAllocatorMine : IDisposable
         };
 
         if (_vk.CreateBuffer(_device, &createInfo, null, out var buffer) != Result.Success)
-        {
             throw new Exception("Failed to create buffer");
-        }
 
         _vk.GetBufferMemoryRequirements(_device, buffer, out var memRequirements);
 
@@ -51,9 +49,7 @@ public class GpuMemoryAllocatorMine : IDisposable
         };
 
         if (_vk.AllocateMemory(_device, &allocInfo, null, out var memory) != Result.Success)
-        {
             throw new Exception("Failed to allocate memory for buffer");
-        }
 
         _vk.BindBufferMemory(_device, buffer, memory, 0);
 
@@ -86,9 +82,7 @@ public class GpuMemoryAllocatorMine : IDisposable
         };
 
         if (_vk.CreateImage(_device, &createInfo, null, out var image) != Result.Success)
-        {
             throw new Exception("Failed to create image");
-        }
 
         _vk.GetImageMemoryRequirements(_device, image, out var memRequirements);
 
@@ -101,9 +95,7 @@ public class GpuMemoryAllocatorMine : IDisposable
         };
 
         if (_vk.AllocateMemory(_device, &allocInfo, null, out var memory) != Result.Success)
-        {
             throw new Exception("Failed to allocate memory for image");
-        }
 
         _vk.BindImageMemory(_device, image, memory, 0);
 
@@ -115,13 +107,9 @@ public class GpuMemoryAllocatorMine : IDisposable
         _vk.GetPhysicalDeviceMemoryProperties(_physicalDevice, out var memProperties);
 
         for (uint i = 0; i < memProperties.MemoryTypeCount; i++)
-        {
             if ((typeFilter & (1 << (int)i)) != 0 &&
                 (memProperties.MemoryTypes[(int)i].PropertyFlags & properties) == properties)
-            {
                 return i;
-            }
-        }
 
         throw new Exception("Failed to find suitable memory type");
     }

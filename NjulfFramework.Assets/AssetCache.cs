@@ -78,11 +78,11 @@ public class AssetCache
     /// <summary>
     /// Clear the cache
     /// </summary>
-     public void Clear()
-     {
-         _cache.Clear();
-         _referenceCounts.Clear();
-     }
+    public void Clear()
+    {
+        _cache.Clear();
+        _referenceCounts.Clear();
+    }
 
     /// <summary>
     /// Get cache statistics

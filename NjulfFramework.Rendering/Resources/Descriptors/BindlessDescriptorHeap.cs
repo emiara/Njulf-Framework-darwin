@@ -47,7 +47,7 @@ public sealed class BindlessDescriptorHeap : IDisposable
         var bufferPoolSize = new DescriptorPoolSize
         {
             Type = DescriptorType.StorageBuffer,
-            DescriptorCount = MaxBindlessBuffers  // ✓ Full capacity
+            DescriptorCount = MaxBindlessBuffers // ✓ Full capacity
         };
 
         var bufferPoolInfo = new DescriptorPoolCreateInfo
@@ -55,10 +55,10 @@ public sealed class BindlessDescriptorHeap : IDisposable
             SType = StructureType.DescriptorPoolCreateInfo,
             Flags = DescriptorPoolCreateFlags.UpdateAfterBindBit,
             MaxSets = 1,
-            PoolSizeCount = 1,
+            PoolSizeCount = 1
         };
 
-        DescriptorPoolSize* bufferSizes = stackalloc DescriptorPoolSize[1];
+        var bufferSizes = stackalloc DescriptorPoolSize[1];
         bufferSizes[0] = bufferPoolSize;
         bufferPoolInfo.PPoolSizes = bufferSizes;
 
@@ -69,7 +69,7 @@ public sealed class BindlessDescriptorHeap : IDisposable
         var texturePoolSize = new DescriptorPoolSize
         {
             Type = DescriptorType.CombinedImageSampler,
-            DescriptorCount = MaxBindlessTextures  // ✓ Full capacity
+            DescriptorCount = MaxBindlessTextures // ✓ Full capacity
         };
 
         var texturePoolInfo = new DescriptorPoolCreateInfo
@@ -77,10 +77,10 @@ public sealed class BindlessDescriptorHeap : IDisposable
             SType = StructureType.DescriptorPoolCreateInfo,
             Flags = DescriptorPoolCreateFlags.UpdateAfterBindBit,
             MaxSets = 1,
-            PoolSizeCount = 1,
+            PoolSizeCount = 1
         };
 
-        DescriptorPoolSize* textureSizes = stackalloc DescriptorPoolSize[1];
+        var textureSizes = stackalloc DescriptorPoolSize[1];
         textureSizes[0] = texturePoolSize;
         texturePoolInfo.PPoolSizes = textureSizes;
 
@@ -91,7 +91,7 @@ public sealed class BindlessDescriptorHeap : IDisposable
     private unsafe void AllocateDescriptorSets(DescriptorSetLayouts layouts)
     {
         // Buffer set with variable descriptor count
-        uint bufferDescriptorCount = MaxBindlessBuffers;
+        var bufferDescriptorCount = MaxBindlessBuffers;
         var bufferVariableCountInfo = new DescriptorSetVariableDescriptorCountAllocateInfo
         {
             SType = StructureType.DescriptorSetVariableDescriptorCountAllocateInfo,
@@ -104,10 +104,10 @@ public sealed class BindlessDescriptorHeap : IDisposable
             SType = StructureType.DescriptorSetAllocateInfo,
             PNext = &bufferVariableCountInfo,
             DescriptorPool = _bufferPool,
-            DescriptorSetCount = 1,
+            DescriptorSetCount = 1
         };
 
-        DescriptorSetLayout* bufferLayouts = stackalloc DescriptorSetLayout[1];
+        var bufferLayouts = stackalloc DescriptorSetLayout[1];
         bufferLayouts[0] = layouts.BufferHeapLayout;
         bufferSetInfo.PSetLayouts = bufferLayouts;
 
@@ -115,7 +115,7 @@ public sealed class BindlessDescriptorHeap : IDisposable
             throw new InvalidOperationException("Failed to allocate bindless buffer descriptor set.");
 
         // Texture set with variable descriptor count
-        uint textureDescriptorCount = MaxBindlessTextures;
+        var textureDescriptorCount = MaxBindlessTextures;
         var textureVariableCountInfo = new DescriptorSetVariableDescriptorCountAllocateInfo
         {
             SType = StructureType.DescriptorSetVariableDescriptorCountAllocateInfo,
@@ -128,10 +128,10 @@ public sealed class BindlessDescriptorHeap : IDisposable
             SType = StructureType.DescriptorSetAllocateInfo,
             PNext = &textureVariableCountInfo,
             DescriptorPool = _texturePool,
-            DescriptorSetCount = 1,
+            DescriptorSetCount = 1
         };
 
-        DescriptorSetLayout* textureLayouts = stackalloc DescriptorSetLayout[1];
+        var textureLayouts = stackalloc DescriptorSetLayout[1];
         textureLayouts[0] = layouts.TextureHeapLayout;
         textureSetInfo.PSetLayouts = textureLayouts;
 
@@ -139,14 +139,25 @@ public sealed class BindlessDescriptorHeap : IDisposable
             throw new InvalidOperationException("Failed to allocate bindless texture descriptor set.");
     }
 
-    public bool TryAllocateBufferIndex(out uint index) =>
-        _bufferAllocator.TryAllocate(out index);
+    public bool TryAllocateBufferIndex(out uint index)
+    {
+        return _bufferAllocator.TryAllocate(out index);
+    }
 
-    public bool TryAllocateTextureIndex(out uint index) =>
-        _textureAllocator.TryAllocate(out index);
+    public bool TryAllocateTextureIndex(out uint index)
+    {
+        return _textureAllocator.TryAllocate(out index);
+    }
 
-    public void FreeBufferIndex(uint index) => _bufferAllocator.Free(index);
-    public void FreeTextureIndex(uint index) => _textureAllocator.Free(index);
+    public void FreeBufferIndex(uint index)
+    {
+        _bufferAllocator.Free(index);
+    }
+
+    public void FreeTextureIndex(uint index)
+    {
+        _textureAllocator.Free(index);
+    }
 
     public unsafe void UpdateBuffer(uint index, Buffer buffer, ulong size, ulong offset = 0)
     {

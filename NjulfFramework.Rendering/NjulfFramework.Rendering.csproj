@@ -8,47 +8,47 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="GpuMemoryAllocator.vma" Version="3.3.0-0.2.0" />
-        <PackageReference Include="GpuMemoryAllocator.Vulkan" Version="3.3.0-0.2.0" />
-        <PackageReference Include="Silk.NET.Assimp" Version="2.22.0" />
-        <PackageReference Include="Silk.NET.Input" Version="2.22.0" />
-        <PackageReference Include="Silk.NET.Input.Extensions" Version="2.22.0" />
-        <PackageReference Include="Silk.NET.Maths" Version="2.22.0" />
-        <PackageReference Include="Silk.NET.Vulkan" Version="2.22.0" />
-        <PackageReference Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.22.0" />
-        <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.22.0" />
-        <PackageReference Include="Silk.NET.Windowing" Version="2.22.0" />
+        <PackageReference Include="GpuMemoryAllocator.vma" Version="3.3.0-0.2.0"/>
+        <PackageReference Include="GpuMemoryAllocator.Vulkan" Version="3.3.0-0.2.0"/>
+        <PackageReference Include="Silk.NET.Assimp" Version="2.22.0"/>
+        <PackageReference Include="Silk.NET.Input" Version="2.22.0"/>
+        <PackageReference Include="Silk.NET.Input.Extensions" Version="2.22.0"/>
+        <PackageReference Include="Silk.NET.Maths" Version="2.22.0"/>
+        <PackageReference Include="Silk.NET.Vulkan" Version="2.22.0"/>
+        <PackageReference Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.22.0"/>
+        <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.22.0"/>
+        <PackageReference Include="Silk.NET.Windowing" Version="2.22.0"/>
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="Resources\GLTF\" />
+        <Folder Include="Resources\GLTF\"/>
     </ItemGroup>
 
     <ItemGroup>
-      <None Update="Shaders\triangle.frag">
-        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-      </None>
-      <None Update="Shaders\triangle.vert">
-        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-      </None>
-      <None Update="Shaders\fragment.frag">
-        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-      </None>
-      <None Update="Shaders\vertex.vert">
-        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-      </None>
-      <None Update="Shaders\forward_plus.frag">
-        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-      </None>
-      <None Update="Shaders\light_cull.comp">
-        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-      </None>
-      <None Update="Shaders\mesh.mesh">
-        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-      </None>
-      <None Update="Shaders\mesh.task">
-        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-      </None>
+        <None Update="Shaders\triangle.frag">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Update="Shaders\triangle.vert">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Update="Shaders\fragment.frag">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Update="Shaders\vertex.vert">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Update="Shaders\forward_plus.frag">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Update="Shaders\light_cull.comp">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Update="Shaders\mesh.mesh">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Update="Shaders\mesh.task">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
     </ItemGroup>
 
 </Project>

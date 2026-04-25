@@ -22,7 +22,7 @@ public class MeshManager : IDisposable
     private readonly Vk _vk;
     private readonly Device _device;
     private readonly BufferManager _bufferManager;
-    
+
     private MeshBuffer _meshBuffer;
     private bool _finalized = false;
     private HashSet<Data.RenderingData.Mesh> _uploadedMeshes = new();
@@ -86,7 +86,7 @@ public class MeshManager : IDisposable
             throw new InvalidOperationException("MeshManager not finalized");
 
         if (_uploadedMeshes.Contains(mesh))
-            return;  // Already uploaded
+            return; // Already uploaded
 
         _meshBuffer.UploadMeshData(mesh, transferCmd, uploadRing);
         _uploadedMeshes.Add(mesh);
@@ -120,16 +120,24 @@ public class MeshManager : IDisposable
     /// Get consolidated buffers for bindless registration.
     /// </summary>
     public (BufferHandle VertexHandle, BufferHandle IndexHandle) GetMeshBufferHandles()
-        => (_meshBuffer.VertexBufferHandle, _meshBuffer.IndexBufferHandle);
+    {
+        return (_meshBuffer.VertexBufferHandle, _meshBuffer.IndexBufferHandle);
+    }
 
     /// <summary>
     /// Get consolidated buffer objects.
     /// </summary>
     public (Buffer VertexBuffer, Buffer IndexBuffer) GetMeshBuffers()
-        => (_meshBuffer.VertexBuffer, _meshBuffer.IndexBuffer);
+    {
+        return (_meshBuffer.VertexBuffer, _meshBuffer.IndexBuffer);
+    }
 
-    public (Buffer MeshletBuffer, Buffer MeshletVertexIndicesBuffer, Buffer MeshletTriangleIndicesBuffer) GetMeshletBuffers()
-        => (_meshBuffer.MeshletBuffer, _meshBuffer.MeshletVertexIndicesBuffer, _meshBuffer.MeshletTriangleIndicesBuffer);
+    public (Buffer MeshletBuffer, Buffer MeshletVertexIndicesBuffer, Buffer MeshletTriangleIndicesBuffer)
+        GetMeshletBuffers()
+    {
+        return (_meshBuffer.MeshletBuffer, _meshBuffer.MeshletVertexIndicesBuffer,
+            _meshBuffer.MeshletTriangleIndicesBuffer);
+    }
 
     public void Dispose()
     {

@@ -49,10 +49,7 @@ public class InputManager
         }
 
         // Evaluate all actions
-        foreach (var action in _actions.Values)
-        {
-            EvaluateAction(action);
-        }
+        foreach (var action in _actions.Values) EvaluateAction(action);
     }
 
     /// <summary>
@@ -76,10 +73,7 @@ public class InputManager
     /// </summary>
     public bool GetActionState(string actionName)
     {
-        if (_actions.TryGetValue(actionName, out var action))
-        {
-            return action.WasTriggered;
-        }
+        if (_actions.TryGetValue(actionName, out var action)) return action.WasTriggered;
         return false;
     }
 
@@ -88,10 +82,7 @@ public class InputManager
     /// </summary>
     public bool IsActionActive(string actionName)
     {
-        if (_actions.TryGetValue(actionName, out var action))
-        {
-            return action.IsActive;
-        }
+        if (_actions.TryGetValue(actionName, out var action)) return action.IsActive;
         return false;
     }
 
@@ -100,10 +91,7 @@ public class InputManager
     /// </summary>
     public float GetAxis(string actionName)
     {
-        if (_actions.TryGetValue(actionName, out var action))
-        {
-            return action.CurrentValue;
-        }
+        if (_actions.TryGetValue(actionName, out var action)) return action.CurrentValue;
         return 0f;
     }
 
@@ -114,44 +102,34 @@ public class InputManager
 
     private void EvaluateAction(InputAction action)
     {
-        float totalValue = 0f;
+        var totalValue = 0f;
 
         foreach (var binding in action.Bindings)
         {
-            float inputValue = 0f;
+            var inputValue = 0f;
 
             if (binding.Device == InputDeviceType.Keyboard && _keyboard != null)
             {
-                if (_keyboard.IsKeyPressed(binding.KeyCode))
-                {
-                    inputValue = 1f;
-                }
+                if (_keyboard.IsKeyPressed(binding.KeyCode)) inputValue = 1f;
             }
             else if (binding.Device == InputDeviceType.Mouse && _mouse != null)
             {
-                if (_mouse.IsButtonPressed(binding.Button))
-                {
-                    inputValue = 1f;
-                }
+                if (_mouse.IsButtonPressed(binding.Button)) inputValue = 1f;
             }
 
             totalValue += inputValue * binding.Scale;
         }
 
         // Apply threshold
-        bool wasActive = action.IsActive;
+        var wasActive = action.IsActive;
         action.IsActive = totalValue >= action.Threshold;
         action.CurrentValue = totalValue;
 
         // For immediate actions, trigger if value exceeds threshold and wasn't active before
-        if (action.Type == Enums.InputActionType.Immediate)
-        {
+        if (action.Type == InputActionType.Immediate)
             action.WasTriggered = action.IsActive && !wasActive;
-        }
         else
-        {
             // For continuous actions, always trigger while active
             action.WasTriggered = action.IsActive;
-        }
     }
 }

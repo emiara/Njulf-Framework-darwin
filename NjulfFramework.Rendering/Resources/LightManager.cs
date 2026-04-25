@@ -27,16 +27,17 @@ public class LightManager : IDisposable
     /// CPU-side light data, updated per-frame.
     /// </summary>
     private List<GPULight> _lights = new();
-    
+
     public uint LightBufferBindlessIndex { get; private set; }
 
     /// <summary>
     /// GPU buffer containing all light data.
     /// </summary>
     private BufferHandle _lightBuffer;
+
     private Buffer _lightBufferVk;
     private const ulong MaxLightCount = 1024;
-    private const ulong LightBufferSize = MaxLightCount * 48;  // 48 bytes per light
+    private const ulong LightBufferSize = MaxLightCount * 48; // 48 bytes per light
 
     /// <summary>
     /// Initialize the light manager.
@@ -54,11 +55,11 @@ public class LightManager : IDisposable
             MemoryUsage.AutoPreferDevice);
 
         _lightBufferVk = _bufferManager.GetBuffer(_lightBuffer);
-        
+
         // Register with bindless heap (two-step pattern)
         if (!bindlessHeap.TryAllocateBufferIndex(out var lightBufferIndex))
             throw new Exception("Failed to allocate bindless index for light buffer");
-    
+
         LightBufferBindlessIndex = lightBufferIndex;
         bindlessHeap.UpdateBuffer(LightBufferBindlessIndex, _lightBufferVk, LightBufferSize);
 
@@ -68,7 +69,10 @@ public class LightManager : IDisposable
     /// <summary>
     /// Get the GPU light buffer for bindless access.
     /// </summary>
-    public Buffer GetLightBuffer() => _lightBufferVk;
+    public Buffer GetLightBuffer()
+    {
+        return _lightBufferVk;
+    }
 
     /// <summary>
     /// Get total light count.
@@ -92,7 +96,10 @@ public class LightManager : IDisposable
     /// <summary>
     /// Remove all lights from the scene.
     /// </summary>
-    public void ClearLights() => _lights.Clear();
+    public void ClearLights()
+    {
+        _lights.Clear();
+    }
 
     /// <summary>
     /// Upload all lights to GPU.
@@ -139,7 +146,10 @@ public class LightManager : IDisposable
     /// <summary>
     /// Get all lights (for debugging).
     /// </summary>
-    public IReadOnlyList<GPULight> GetAllLights() => _lights.AsReadOnly();
+    public IReadOnlyList<GPULight> GetAllLights()
+    {
+        return _lights.AsReadOnly();
+    }
 
     public void Dispose()
     {

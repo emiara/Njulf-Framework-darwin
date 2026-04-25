@@ -33,6 +33,7 @@ public struct GPULight
     /// Unused padding for alignment.
     /// </summary>
     public uint Padding1;
+
     public uint Padding2;
     public uint Padding3;
 
@@ -45,7 +46,7 @@ public struct GPULight
         {
             PositionRadius = new Vector4(position, radius),
             ColorIntensity = new Vector4(color, intensity),
-            LightType = 0  // Point light
+            LightType = 0 // Point light
         };
     }
 }

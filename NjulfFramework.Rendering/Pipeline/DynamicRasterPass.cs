@@ -15,7 +15,7 @@ public class DynamicRasterPass : RenderGraphPass
 {
     private readonly Vk _vk;
     private readonly Device _device;
-    
+
     private ImageView _colorAttachment;
     private ImageView _depthAttachment;
     private Extent2D _extent;
@@ -50,7 +50,10 @@ public class DynamicRasterPass : RenderGraphPass
     /// <summary>
     /// Set the render target extent (width, height).
     /// </summary>
-    public void SetExtent(Extent2D extent) => _extent = extent;
+    public void SetExtent(Extent2D extent)
+    {
+        _extent = extent;
+    }
 
     /// <summary>
     /// Execute the raster pass using dynamic rendering.
@@ -63,13 +66,13 @@ public class DynamicRasterPass : RenderGraphPass
         var colorAttachmentInfo = new RenderingAttachmentInfo
         {
             SType = StructureType.RenderingAttachmentInfo,
-            ImageView = ctx.ColorAttachmentView,  // ← From context
+            ImageView = ctx.ColorAttachmentView, // ← From context
             ImageLayout = ImageLayout.ColorAttachmentOptimal,
             LoadOp = AttachmentLoadOp.Clear,
             StoreOp = AttachmentStoreOp.Store,
-            ClearValue = new ClearValue 
-            { 
-                Color = new ClearColorValue(_clearColor.X, _clearColor.Y, _clearColor.Z, _clearColor.W) 
+            ClearValue = new ClearValue
+            {
+                Color = new ClearColorValue(_clearColor.X, _clearColor.Y, _clearColor.Z, _clearColor.W)
             }
         };
 
@@ -77,7 +80,7 @@ public class DynamicRasterPass : RenderGraphPass
         RenderingAttachmentInfo depthAttachmentInfo = default;
         RenderingAttachmentInfo* pDepthAttachment = null;
 
-        if (ctx.DepthAttachmentView.Handle != 0)  // ← From context
+        if (ctx.DepthAttachmentView.Handle != 0) // ← From context
         {
             depthAttachmentInfo = new RenderingAttachmentInfo
             {
@@ -86,9 +89,9 @@ public class DynamicRasterPass : RenderGraphPass
                 ImageLayout = ImageLayout.DepthAttachmentOptimal,
                 LoadOp = AttachmentLoadOp.Clear,
                 StoreOp = AttachmentStoreOp.DontCare,
-                ClearValue = new ClearValue 
-                { 
-                    DepthStencil = new ClearDepthStencilValue(1.0f, 0) 
+                ClearValue = new ClearValue
+                {
+                    DepthStencil = new ClearDepthStencilValue(1.0f, 0)
                 }
             };
             pDepthAttachment = &depthAttachmentInfo;
@@ -98,10 +101,10 @@ public class DynamicRasterPass : RenderGraphPass
         var renderingInfo = new RenderingInfo
         {
             SType = StructureType.RenderingInfo,
-            RenderArea = new Rect2D 
-            { 
+            RenderArea = new Rect2D
+            {
                 Offset = new Offset2D { X = 0, Y = 0 },
-                Extent = _extent 
+                Extent = _extent
             },
             LayerCount = 1,
             ColorAttachmentCount = 1,
@@ -135,10 +138,7 @@ public class DynamicRasterPass : RenderGraphPass
 
             ctx.MeshManager?.BindMeshBuffers(cmd);
 
-            foreach (var obj in ctx.VisibleObjects)
-            {
-                DrawObject(cmd, ctx, obj);
-            }
+            foreach (var obj in ctx.VisibleObjects) DrawObject(cmd, ctx, obj);
         }
         finally
         {
@@ -158,7 +158,7 @@ public class DynamicRasterPass : RenderGraphPass
         // - Bind descriptor sets for bindless buffers/textures
         // - Push object-specific data via push constants
         // - Issue draw calls with vertex/index buffers from obj.Mesh
-        
+
         if (obj?.Mesh == null)
             return;
 

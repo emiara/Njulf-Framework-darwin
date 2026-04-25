@@ -9,9 +9,9 @@ public enum InputActionType
     /// Action triggers instantly when input is detected.
     /// </summary>
     Immediate,
-    
+
     /// <summary>
     /// Action provides ongoing values while input is active.
     /// </summary>
-    Continuous,
+    Continuous
 }

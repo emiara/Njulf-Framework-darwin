@@ -14,8 +14,9 @@ public class DynamicRayTracingPass : RenderGraphPass
 {
     private readonly Vk _vk;
     private readonly Device _device;
-    
+
     private ImageView _outputImage;
+
     private Extent2D _extent;
     // Note: RayTracingPipeline will be implemented in Task 4.3
     // private RayTracingPipeline _rtPipeline;
@@ -39,7 +40,10 @@ public class DynamicRayTracingPass : RenderGraphPass
     /// <summary>
     /// Set the ray tracing output extent.
     /// </summary>
-    public void SetExtent(Extent2D extent) => _extent = extent;
+    public void SetExtent(Extent2D extent)
+    {
+        _extent = extent;
+    }
 
     /// <summary>
     /// Execute the ray tracing pass.
@@ -52,7 +56,7 @@ public class DynamicRayTracingPass : RenderGraphPass
 
         // Ray tracing does NOT need dynamic rendering begin/end,
         // but we can still use it for consistency with image transitions
-        
+
         if (!ctx.TLAS.HasValue || ctx.TLAS.Value.Handle == 0)
         {
             Console.WriteLine("Warning: TLAS not available for ray tracing pass");

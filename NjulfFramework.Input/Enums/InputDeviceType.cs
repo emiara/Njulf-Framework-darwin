@@ -6,5 +6,5 @@ namespace NjulfFramework.Input.Enums;
 public enum InputDeviceType
 {
     Keyboard,
-    Mouse,
+    Mouse
 }

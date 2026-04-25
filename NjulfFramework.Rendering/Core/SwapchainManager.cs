@@ -14,7 +14,7 @@ public class SwapchainManager : IDisposable
     private readonly Instance _instance;
     private readonly SurfaceKHR _surface;
     private readonly Queue _presentQueue;
-    
+
     private readonly KhrSurface _khrSurface;
     private readonly KhrSwapchain _khrSwapchain;
 
@@ -47,14 +47,14 @@ public class SwapchainManager : IDisposable
         _device = device;
         _surface = surface;
         _presentQueue = presentQueue;
-        
+
         // In constructor or initialization method:
         if (!_vk.TryGetInstanceExtension(_instance, out _khrSurface))
             throw new Exception("KHR_surface extension not available");
 
         if (!_vk.TryGetDeviceExtension(_instance, _device, out _khrSwapchain))
             throw new Exception("KHR_swapchain extension not available");
-        
+
         CreateSwapchain(width, height);
         CreateImageViews();
     }
@@ -68,11 +68,9 @@ public class SwapchainManager : IDisposable
         _swapchainExtent = ChooseSwapExtent(surfaceCapabilities, width, height);
         _swapchainImageFormat = surfaceFormat.Format;
 
-        uint imageCount = surfaceCapabilities.MinImageCount + 1;
+        var imageCount = surfaceCapabilities.MinImageCount + 1;
         if (surfaceCapabilities.MaxImageCount > 0 && imageCount > surfaceCapabilities.MaxImageCount)
-        {
             imageCount = surfaceCapabilities.MaxImageCount;
-        }
 
         var createInfo = new SwapchainCreateInfoKHR
         {
@@ -96,9 +94,7 @@ public class SwapchainManager : IDisposable
         };
 
         if (_khrSwapchain!.CreateSwapchain(_device, &createInfo, null, out _swapchain) != Result.Success)
-        {
             throw new Exception("Failed to create swapchain");
-        }
 
         RetrieveSwapchainImages();
     }
@@ -119,7 +115,7 @@ public class SwapchainManager : IDisposable
     {
         _swapchainImageViews = new ImageView[_swapchainImages.Length];
 
-        for (int i = 0; i < _swapchainImages.Length; i++)
+        for (var i = 0; i < _swapchainImages.Length; i++)
         {
             var createInfo = new ImageViewCreateInfo
             {
@@ -145,9 +141,7 @@ public class SwapchainManager : IDisposable
             };
 
             if (_vk.CreateImageView(_device, &createInfo, null, out _swapchainImageViews[i]) != Result.Success)
-            {
                 throw new Exception($"Failed to create image view {i}");
-            }
         }
     }
 
@@ -170,12 +164,8 @@ public class SwapchainManager : IDisposable
 
         // Prefer SRGB if available
         foreach (var format in formats)
-        {
             if (format.Format == Format.B8G8R8A8Srgb && format.ColorSpace == ColorSpaceKHR.SpaceSrgbNonlinearKhr)
-            {
                 return format;
-            }
-        }
 
         return formats[0];
     }
@@ -193,22 +183,15 @@ public class SwapchainManager : IDisposable
 
         // Prefer Mailbox (triple buffering), fallback to FIFO
         foreach (var mode in modes)
-        {
             if (mode == PresentModeKHR.MailboxKhr)
-            {
                 return mode;
-            }
-        }
 
         return PresentModeKHR.FifoKhr;
     }
 
     private Extent2D ChooseSwapExtent(SurfaceCapabilitiesKHR capabilities, uint width, uint height)
     {
-        if (capabilities.CurrentExtent.Width != uint.MaxValue)
-        {
-            return capabilities.CurrentExtent;
-        }
+        if (capabilities.CurrentExtent.Width != uint.MaxValue) return capabilities.CurrentExtent;
 
         return new Extent2D
         {
@@ -221,15 +204,8 @@ public class SwapchainManager : IDisposable
 
     public unsafe void Dispose()
     {
-        foreach (var imageView in _swapchainImageViews)
-        {
-            _vk.DestroyImageView(_device, imageView, null);
-        }
+        foreach (var imageView in _swapchainImageViews) _vk.DestroyImageView(_device, imageView, null);
 
-        if (_swapchain.Handle != 0)
-        {
-            _khrSwapchain!.DestroySwapchain(_device, _swapchain, null);
-        }
+        if (_swapchain.Handle != 0) _khrSwapchain!.DestroySwapchain(_device, _swapchain, null);
     }
-    
 }

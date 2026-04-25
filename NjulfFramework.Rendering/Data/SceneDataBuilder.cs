@@ -57,17 +57,17 @@ public class SceneDataBuilder : IDisposable
             return;
 
         // Get or add material
-        uint materialIdx = GetOrAddMaterial(obj.Material);
+        var materialIdx = GetOrAddMaterial(obj.Material);
 
         // Get or add mesh
-        uint meshIdx = GetOrAddMesh(obj.Mesh);
+        var meshIdx = GetOrAddMesh(obj.Mesh);
 
         // Add object data
         var gpuObjectData = new GPUObjectData(
-            transform: obj.Transform,
-            materialIndex: materialIdx,
-            meshIndex: meshIdx,
-            instanceIndex: (uint)_objectData.Count
+            obj.Transform,
+            materialIdx,
+            meshIdx,
+            (uint)_objectData.Count
         );
 
         _objectData.Add(gpuObjectData);
@@ -81,12 +81,12 @@ public class SceneDataBuilder : IDisposable
         if (_materialIndexMap.TryGetValue(material, out var idx))
             return idx;
 
-        uint newIdx = (uint)_materialData.Count;
+        var newIdx = (uint)_materialData.Count;
         var gpuMaterial = new GPUMaterial(
-            baseColor: material.Color,
-            baseColorTextureIndex: uint.MaxValue,    // TODO: get from texture manager
-            normalTextureIndex: uint.MaxValue,
-            metallicRoughnessTextureIndex: uint.MaxValue
+            material.Color,
+            uint.MaxValue, // TODO: get from texture manager
+            uint.MaxValue,
+            uint.MaxValue
         );
 
         _materialData.Add(gpuMaterial);
@@ -102,7 +102,7 @@ public class SceneDataBuilder : IDisposable
         if (_meshIndexMap.TryGetValue(mesh, out var idx))
             return idx;
 
-        uint newIdx = (uint)_meshData.Count;
+        var newIdx = (uint)_meshData.Count;
 
         // Calculate bounding box
         var (bbMin, bbMax) = GPUMeshData.CalculateBoundingBox(mesh.Vertices);
@@ -117,14 +117,14 @@ public class SceneDataBuilder : IDisposable
         }
 
         var gpuMeshData = new GPUMeshData(
-            vertexBufferIndex: uint.MaxValue,    // TODO: get from buffer manager
-            indexBufferIndex: uint.MaxValue,
-            vertexCount: (uint)mesh.Vertices.Length,
-            indexCount: (uint)mesh.Indices.Length,
-            boundingBoxMin: bbMin,
-            boundingBoxMax: bbMax,
-            meshletOffset: meshletOffset,
-            meshletCount: meshletCount
+            uint.MaxValue, // TODO: get from buffer manager
+            uint.MaxValue,
+            (uint)mesh.Vertices.Length,
+            (uint)mesh.Indices.Length,
+            bbMin,
+            bbMax,
+            meshletOffset,
+            meshletCount
         );
 
         _meshData.Add(gpuMeshData);
@@ -136,7 +136,7 @@ public class SceneDataBuilder : IDisposable
     /// Record copy commands to upload all scene data to GPU.
     /// The FrameUploadRing provides the staging buffers; you supply the destination buffers.
     /// </summary>
-    public unsafe void UploadToGPU(Vk vk, CommandBuffer cmd, FrameUploadRing uploadRing, 
+    public unsafe void UploadToGPU(Vk vk, CommandBuffer cmd, FrameUploadRing uploadRing,
         Buffer objectDataBuffer, Buffer materialDataBuffer, Buffer meshDataBuffer)
     {
         if (_objectData.Count == 0)
@@ -156,7 +156,7 @@ public class SceneDataBuilder : IDisposable
         var srcBuffer = uploadRing.CurrentUploadBuffer;
 
         // Copy object data
-        uint objectDataSize = (uint)objectArray.Length * GPUObjectData.GetSizeInBytes();
+        var objectDataSize = (uint)objectArray.Length * GPUObjectData.GetSizeInBytes();
         if (objectDataSize > 0)
         {
             var objectCopy = new BufferCopy
@@ -169,7 +169,7 @@ public class SceneDataBuilder : IDisposable
         }
 
         // Copy material data (offset after object data)
-        uint materialDataSize = (uint)materialArray.Length * GPUMaterial.GetSizeInBytes();
+        var materialDataSize = (uint)materialArray.Length * GPUMaterial.GetSizeInBytes();
         if (materialDataSize > 0)
         {
             var materialCopy = new BufferCopy
@@ -182,7 +182,7 @@ public class SceneDataBuilder : IDisposable
         }
 
         // Copy mesh data (offset after materials)
-        uint meshDataSize = (uint)meshArray.Length * GPUMeshData.GetSizeInBytes();
+        var meshDataSize = (uint)meshArray.Length * GPUMeshData.GetSizeInBytes();
         if (meshDataSize > 0)
         {
             var meshCopy = new BufferCopy
@@ -212,6 +212,7 @@ public class SceneDataBuilder : IDisposable
     /// Get read-only arrays for inspection/debugging.
     /// </summary>
     public IReadOnlyList<GPUObjectData> ObjectData => _objectData.AsReadOnly();
+
     public IReadOnlyList<GPUMaterial> MaterialData => _materialData.AsReadOnly();
     public IReadOnlyList<GPUMeshData> MeshData => _meshData.AsReadOnly();
 

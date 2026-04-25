@@ -34,7 +34,7 @@ public class RenderingData
             return 32; // 12 (position) + 12 (normal) + 8 (texCoord) = 32 bytes
         }
     }
-    
+
     /// <summary>
     /// Uniform buffer data for transformations.
     /// Sent to GPU once per object per frame.
@@ -57,15 +57,15 @@ public class RenderingData
             return 192; // 3 x 64 bytes = 192 bytes
         }
     }
-    
+
     /// <summary>
     /// Alpha mode for material transparency.
     /// </summary>
     public enum AlphaMode
     {
-        Opaque,  // Fully opaque
-        Mask,    // Binary transparency with cutoff
-        Blend    // Alpha blending
+        Opaque, // Fully opaque
+        Mask, // Binary transparency with cutoff
+        Blend // Alpha blending
     }
 
     /// <summary>
@@ -134,7 +134,7 @@ public class RenderingData
             // Cleanup will be handled by texture manager
         }
     }
-    
+
     /// <summary>
     /// Mesh data - vertices and indices.
     /// Immutable after creation.
@@ -144,7 +144,7 @@ public class RenderingData
         public string Name { get; set; }
         public Vertex[] Vertices { get; private set; }
         public uint[] Indices { get; private set; }
-        
+
         public Vector3 BoundingBoxMin { get; set; }
         public Vector3 BoundingBoxMax { get; set; }
 
@@ -165,40 +165,40 @@ public class RenderingData
             var vertices = new Vertex[]
             {
                 // Front face (Z+) - Counter-clockwise when viewed from outside
-                new Vertex(new Vector3(-0.5f, -0.5f, 0.5f), Vector3.UnitZ, new Vector2(0, 1)),
-                new Vertex(new Vector3(0.5f, -0.5f, 0.5f), Vector3.UnitZ, new Vector2(1, 1)),
-                new Vertex(new Vector3(0.5f, 0.5f, 0.5f), Vector3.UnitZ, new Vector2(1, 0)),
-                new Vertex(new Vector3(-0.5f, 0.5f, 0.5f), Vector3.UnitZ, new Vector2(0, 0)),
+                new(new Vector3(-0.5f, -0.5f, 0.5f), Vector3.UnitZ, new Vector2(0, 1)),
+                new(new Vector3(0.5f, -0.5f, 0.5f), Vector3.UnitZ, new Vector2(1, 1)),
+                new(new Vector3(0.5f, 0.5f, 0.5f), Vector3.UnitZ, new Vector2(1, 0)),
+                new(new Vector3(-0.5f, 0.5f, 0.5f), Vector3.UnitZ, new Vector2(0, 0)),
 
                 // Back face (Z-) - Counter-clockwise when viewed from outside
-                new Vertex(new Vector3(0.5f, -0.5f, -0.5f), -Vector3.UnitZ, new Vector2(0, 1)),
-                new Vertex(new Vector3(-0.5f, -0.5f, -0.5f), -Vector3.UnitZ, new Vector2(1, 1)),
-                new Vertex(new Vector3(-0.5f, 0.5f, -0.5f), -Vector3.UnitZ, new Vector2(1, 0)),
-                new Vertex(new Vector3(0.5f, 0.5f, -0.5f), -Vector3.UnitZ, new Vector2(0, 0)),
+                new(new Vector3(0.5f, -0.5f, -0.5f), -Vector3.UnitZ, new Vector2(0, 1)),
+                new(new Vector3(-0.5f, -0.5f, -0.5f), -Vector3.UnitZ, new Vector2(1, 1)),
+                new(new Vector3(-0.5f, 0.5f, -0.5f), -Vector3.UnitZ, new Vector2(1, 0)),
+                new(new Vector3(0.5f, 0.5f, -0.5f), -Vector3.UnitZ, new Vector2(0, 0)),
 
                 // Top face (Y+) - Counter-clockwise when viewed from outside
-                new Vertex(new Vector3(-0.5f, 0.5f, -0.5f), Vector3.UnitY, new Vector2(0, 1)),
-                new Vertex(new Vector3(-0.5f, 0.5f, 0.5f), Vector3.UnitY, new Vector2(0, 0)),
-                new Vertex(new Vector3(0.5f, 0.5f, 0.5f), Vector3.UnitY, new Vector2(1, 0)),
-                new Vertex(new Vector3(0.5f, 0.5f, -0.5f), Vector3.UnitY, new Vector2(1, 1)),
+                new(new Vector3(-0.5f, 0.5f, -0.5f), Vector3.UnitY, new Vector2(0, 1)),
+                new(new Vector3(-0.5f, 0.5f, 0.5f), Vector3.UnitY, new Vector2(0, 0)),
+                new(new Vector3(0.5f, 0.5f, 0.5f), Vector3.UnitY, new Vector2(1, 0)),
+                new(new Vector3(0.5f, 0.5f, -0.5f), Vector3.UnitY, new Vector2(1, 1)),
 
                 // Bottom face (Y-) - Counter-clockwise when viewed from outside
-                new Vertex(new Vector3(-0.5f, -0.5f, 0.5f), -Vector3.UnitY, new Vector2(0, 0)),
-                new Vertex(new Vector3(-0.5f, -0.5f, -0.5f), -Vector3.UnitY, new Vector2(0, 1)),
-                new Vertex(new Vector3(0.5f, -0.5f, -0.5f), -Vector3.UnitY, new Vector2(1, 1)),
-                new Vertex(new Vector3(0.5f, -0.5f, 0.5f), -Vector3.UnitY, new Vector2(1, 0)),
+                new(new Vector3(-0.5f, -0.5f, 0.5f), -Vector3.UnitY, new Vector2(0, 0)),
+                new(new Vector3(-0.5f, -0.5f, -0.5f), -Vector3.UnitY, new Vector2(0, 1)),
+                new(new Vector3(0.5f, -0.5f, -0.5f), -Vector3.UnitY, new Vector2(1, 1)),
+                new(new Vector3(0.5f, -0.5f, 0.5f), -Vector3.UnitY, new Vector2(1, 0)),
 
                 // Right face (X+) - Counter-clockwise when viewed from outside
-                new Vertex(new Vector3(0.5f, -0.5f, 0.5f), Vector3.UnitX, new Vector2(0, 1)),
-                new Vertex(new Vector3(0.5f, -0.5f, -0.5f), Vector3.UnitX, new Vector2(1, 1)),
-                new Vertex(new Vector3(0.5f, 0.5f, -0.5f), Vector3.UnitX, new Vector2(1, 0)),
-                new Vertex(new Vector3(0.5f, 0.5f, 0.5f), Vector3.UnitX, new Vector2(0, 0)),
+                new(new Vector3(0.5f, -0.5f, 0.5f), Vector3.UnitX, new Vector2(0, 1)),
+                new(new Vector3(0.5f, -0.5f, -0.5f), Vector3.UnitX, new Vector2(1, 1)),
+                new(new Vector3(0.5f, 0.5f, -0.5f), Vector3.UnitX, new Vector2(1, 0)),
+                new(new Vector3(0.5f, 0.5f, 0.5f), Vector3.UnitX, new Vector2(0, 0)),
 
                 // Left face (X-) - Counter-clockwise when viewed from outside
-                new Vertex(new Vector3(-0.5f, -0.5f, -0.5f), -Vector3.UnitX, new Vector2(0, 1)),
-                new Vertex(new Vector3(-0.5f, -0.5f, 0.5f), -Vector3.UnitX, new Vector2(1, 1)),
-                new Vertex(new Vector3(-0.5f, 0.5f, 0.5f), -Vector3.UnitX, new Vector2(1, 0)),
-                new Vertex(new Vector3(-0.5f, 0.5f, -0.5f), -Vector3.UnitX, new Vector2(0, 0)),
+                new(new Vector3(-0.5f, -0.5f, -0.5f), -Vector3.UnitX, new Vector2(0, 1)),
+                new(new Vector3(-0.5f, -0.5f, 0.5f), -Vector3.UnitX, new Vector2(1, 1)),
+                new(new Vector3(-0.5f, 0.5f, 0.5f), -Vector3.UnitX, new Vector2(1, 0)),
+                new(new Vector3(-0.5f, 0.5f, -0.5f), -Vector3.UnitX, new Vector2(0, 0))
             };
 
             var indices = new uint[]
@@ -220,7 +220,7 @@ public class RenderingData
             return new Mesh("Cube", vertices, indices, new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(0.5f, 0.5f, 0.5f));
         }
     }
-    
+
     /// <summary>
     /// Renderable object combining mesh, material, and transform.
     /// </summary>
@@ -240,31 +240,31 @@ public class RenderingData
             Transform = transform == default ? Matrix4x4.Identity : transform;
         }
     }
-    
+
     [StructLayout(LayoutKind.Sequential)]
     public struct PushConstants
     {
-        public Matrix4x4 Model;        // 64 bytes
-        public Matrix4x4 View;         // 64 bytes
-        public Matrix4x4 Projection;   // 64 bytes
+        public Matrix4x4 Model; // 64 bytes
+        public Matrix4x4 View; // 64 bytes
+        public Matrix4x4 Projection; // 64 bytes
 
-        public uint MaterialIndex;     // 4 bytes
-        public uint VertexOffset;      // 4 bytes
+        public uint MaterialIndex; // 4 bytes
+        public uint VertexOffset; // 4 bytes
 
-        public uint IndexOffset;       // 4 bytes
-        public uint IndexCount;        // 4 bytes
-        public uint VertexCount;       // 4 bytes
-        public uint MeshletOffset;     // 4 bytes
+        public uint IndexOffset; // 4 bytes
+        public uint IndexCount; // 4 bytes
+        public uint VertexCount; // 4 bytes
+        public uint MeshletOffset; // 4 bytes
 
-        public uint MeshletCount;      // 4 bytes
+        public uint MeshletCount; // 4 bytes
         public float MeshBoundsRadius; // 4 bytes
-        public uint ScreenWidth;       // 4 bytes
-        public uint ScreenHeight;      // 4 bytes
-        public uint DebugMeshlets;     // 4 bytes
-        public uint LightCount;        // 4 bytes
-        public uint LightBufferIndex;  // 4 bytes
-        public uint TiledLightHeaderBufferIndex;   // 4 bytes
-        public uint TiledLightIndicesBufferIndex;  // 4 bytes
-        public uint Padding;           // 4 bytes (align to 16)
+        public uint ScreenWidth; // 4 bytes
+        public uint ScreenHeight; // 4 bytes
+        public uint DebugMeshlets; // 4 bytes
+        public uint LightCount; // 4 bytes
+        public uint LightBufferIndex; // 4 bytes
+        public uint TiledLightHeaderBufferIndex; // 4 bytes
+        public uint TiledLightIndicesBufferIndex; // 4 bytes
+        public uint Padding; // 4 bytes (align to 16)
     }
 }

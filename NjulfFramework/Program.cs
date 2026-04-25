@@ -8,7 +8,7 @@ internal static class RendererExample
 {
     private static VulkanRenderer? _renderer;
 
-    static void Main(string[] args)
+    private static void Main(string[] args)
     {
         var options = WindowOptions.DefaultVulkan with
         {
@@ -52,10 +52,7 @@ internal static class RendererExample
         catch (Exception ex)
         {
             Console.WriteLine($"✗ Failed to load renderer: {ex.Message}");
-            if (ex.InnerException != null)
-            {
-                Console.WriteLine($"  Inner exception: {ex.InnerException.Message}");
-            }
+            if (ex.InnerException != null) Console.WriteLine($"  Inner exception: {ex.InnerException.Message}");
         }
     }
 

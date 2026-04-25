@@ -22,7 +22,7 @@ public class RenderGraphContext(uint width, uint height, BindlessDescriptorHeap 
     /// Render target height in pixels.
     /// </summary>
     public uint Height { get; set; } = height;
-    
+
     public BindlessDescriptorHeap BindlessHeap { get; set; } = bindlessHeap;
 
     /// <summary>
@@ -35,7 +35,7 @@ public class RenderGraphContext(uint width, uint height, BindlessDescriptorHeap 
     /// Populated after frustum/occlusion culling.
     /// </summary>
     public List<Data.RenderingData.RenderObject> VisibleObjects { get; set; } = new();
-    
+
     /// <summary>
     /// Color attachment image view for the current frame.
     /// </summary>

@@ -11,16 +11,16 @@ layout(push_constant) uniform PushConstants {
     uint screenHeight;
     uint lightCount;
     uint tileSize;
-    uint lightBufferIdx;      // Index into bindless heap
-    uint headerBufferIdx;     // Index into bindless heap
-    uint indicesBufferIdx;    // Index into bindless heap
+    uint lightBufferIdx;// Index into bindless heap
+    uint headerBufferIdx;// Index into bindless heap
+    uint indicesBufferIdx;// Index into bindless heap
 } pc;
 
 // Light data (from LightManager GPU buffer)
 struct GPULight {
-    vec4 positionRadius;      // xyz = position, w = radius
-    vec4 colorIntensity;      // xyz = color, w = intensity
-    uvec4 lightTypeData;      // x = type, y-z-w = padding
+    vec4 positionRadius;// xyz = position, w = radius
+    vec4 colorIntensity;// xyz = color, w = intensity
+    uvec4 lightTypeData;// x = type, y-z-w = padding
 };
 
 layout(set = 0, binding = 0) buffer GPULightBuffer {
@@ -40,7 +40,7 @@ layout(set = 0, binding = 1) buffer TiledLightHeaderBuffer {
 // Output: Per-tile light indices
 // ✅ FIXED: Declared with fixed size instead of unsized array
 layout(set = 0, binding = 2) buffer TiledLightIndicesBuffer {
-    uint indices[];  // Max tiles × max lights per tile
+    uint indices[];// Max tiles × max lights per tile
 } tiledIndices;
 
 // Shared memory for atomic operations
@@ -89,19 +89,19 @@ void main()
         // For now: all lights affect all tiles (conservative)
         // TODO: Implement proper tile frustum culling
 
-        bool lightAffectsTile = true;  // TODO: Actual culling
+        bool lightAffectsTile = true;// TODO: Actual culling
 
         if (lightAffectsTile)
         {
             // Add light to list using atomic operation
             uint idx = atomicAdd(sharedLightCount, 1u);
-            if (idx < 256u)  // Ensure we don't overflow
+            if (idx < 256u)// Ensure we don't overflow
             {
                 sharedLightList[idx] = lightIdx;
             }
         }
 
-        lightIdx += 256u;  // Next batch of lights (16×16 = 256 threads)
+        lightIdx += 256u;// Next batch of lights (16×16 = 256 threads)
     }
 
     barrier();

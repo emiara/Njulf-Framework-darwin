@@ -24,7 +24,7 @@ public class KeyboardDevice
     /// </summary>
     public bool IsKeyPressed(int keyCode)
     {
-        return _keyStates.TryGetValue(keyCode, out bool state) && state;
+        return _keyStates.TryGetValue(keyCode, out var state) && state;
     }
 
     /// <summary>
@@ -32,8 +32,8 @@ public class KeyboardDevice
     /// </summary>
     public bool WasKeyPressed(int keyCode)
     {
-        bool currentState = _keyStates.TryGetValue(keyCode, out bool state) && state;
-        bool previousState = _previousKeyStates.TryGetValue(keyCode, out bool prevState) && prevState;
+        var currentState = _keyStates.TryGetValue(keyCode, out var state) && state;
+        var previousState = _previousKeyStates.TryGetValue(keyCode, out var prevState) && prevState;
         return currentState && !previousState;
     }
 
@@ -42,8 +42,8 @@ public class KeyboardDevice
     /// </summary>
     public bool WasKeyReleased(int keyCode)
     {
-        bool currentState = _keyStates.TryGetValue(keyCode, out bool state) && state;
-        bool previousState = _previousKeyStates.TryGetValue(keyCode, out bool prevState) && prevState;
+        var currentState = _keyStates.TryGetValue(keyCode, out var state) && state;
+        var previousState = _previousKeyStates.TryGetValue(keyCode, out var prevState) && prevState;
         return !currentState && previousState;
     }
 
@@ -54,16 +54,17 @@ public class KeyboardDevice
     {
         // Save current states as previous
         _previousKeyStates.Clear();
-        foreach (var kvp in _keyStates)
-        {
-            _previousKeyStates[kvp.Key] = kvp.Value;
-        }
+        foreach (var kvp in _keyStates) _previousKeyStates[kvp.Key] = kvp.Value;
 
         // Get current states
-        var nativeKeyboard = _keyboard.NativeKeyboard;
-        for (int i = 0; i <= 255; i++)
+        for (var i = 0; i <= 255; i++)
         {
-            bool isPressed = nativeKeyboard[(Key)i];
+            if (!Enum.IsDefined(typeof(Key), i))
+            {
+                _keyStates[i] = false;
+                continue;
+            }
+            bool isPressed = _keyboard.IsKeyPressed((Key)i);
             _keyStates[i] = isPressed;
         }
     }

@@ -14,7 +14,7 @@ namespace NjulfFramework.Assets;
 public class AssimpImporter : IDisposable
 {
     private readonly Assimp _assimp;
-    private IntPtr? _lastScenePtr;  // Tracks the most recently imported scene
+    private IntPtr? _lastScenePtr; // Tracks the most recently imported scene
 
     /// <summary>
     /// Constructor
@@ -66,6 +66,7 @@ public class AssimpImporter : IDisposable
             {
                 _assimp.FreeScene((Scene*)_lastScenePtr.Value);
             }
+
             _lastScenePtr = null;
         }
     }

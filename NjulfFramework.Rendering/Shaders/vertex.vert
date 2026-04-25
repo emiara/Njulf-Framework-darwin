@@ -27,10 +27,10 @@ layout(push_constant) uniform PushConstants {
 } pc;
 
 // Outputs (to fragment shader)
-layout(location = 0) out vec3 outPosition;      // ← NEW: World position
-layout(location = 1) out vec3 outNormal;        // ← NEW: World normal
-layout(location = 2) out vec2 outTexCoord;      // ← Keep texture coords
-layout(location = 3) out flat uint outMaterialIndex;  // ← Material ID
+layout(location = 0) out vec3 outPosition;// ← NEW: World position
+layout(location = 1) out vec3 outNormal;// ← NEW: World normal
+layout(location = 2) out vec2 outTexCoord;// ← Keep texture coords
+layout(location = 3) out flat uint outMaterialIndex;// ← Material ID
 
 void main() {
     gl_Position = pc.projection * pc.view * pc.model * vec4(inPosition, 1.0);

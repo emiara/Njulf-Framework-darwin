@@ -8,9 +8,9 @@ layout(push_constant) uniform PushConstants {
     uint screenHeight;
     uint lightCount;
     uint tileSize;
-    uint lightBufferIdx;      // Index into bindless buffer heap
-    uint headerBufferIdx;     // Index into bindless buffer heap
-    uint indicesBufferIdx;    // Index into bindless buffer heap
+    uint lightBufferIdx;// Index into bindless buffer heap
+    uint headerBufferIdx;// Index into bindless buffer heap
+    uint indicesBufferIdx;// Index into bindless buffer heap
 } pc;
 
 
@@ -20,9 +20,9 @@ layout(set = 0, binding = 0) buffer StorageBuffers {
 
 
 struct GPULight {
-    vec4 positionRadius;    // xyz = position, w = radius
-    vec4 colorIntensity;    // xyz = color, w = intensity
-    uvec4 lightTypeData;    // x = light type, yzw = padding
+    vec4 positionRadius;// xyz = position, w = radius
+    vec4 colorIntensity;// xyz = color, w = intensity
+    uvec4 lightTypeData;// x = light type, yzw = padding
 };
 
 struct TiledLightHeader {
@@ -41,24 +41,24 @@ GPULight getLight(uint lightIdx) {
     uint baseOffset = lightIdx * 12u;
 
     vec4 positionRadius = vec4(
-        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 0u]),
-        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 1u]),
-        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 2u]),
-        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 3u])
+    uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 0u]),
+    uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 1u]),
+    uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 2u]),
+    uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 3u])
     );
 
     vec4 colorIntensity = vec4(
-        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 4u]),
-        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 5u]),
-        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 6u]),
-        uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 7u])
+    uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 4u]),
+    uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 5u]),
+    uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 6u]),
+    uintBitsToFloat(buffers[pc.lightBufferIdx].data[baseOffset + 7u])
     );
 
     uvec4 lightTypeData = uvec4(
-        buffers[pc.lightBufferIdx].data[baseOffset + 8u],
-        buffers[pc.lightBufferIdx].data[baseOffset + 9u],
-        buffers[pc.lightBufferIdx].data[baseOffset + 10u],
-        buffers[pc.lightBufferIdx].data[baseOffset + 11u]
+    buffers[pc.lightBufferIdx].data[baseOffset + 8u],
+    buffers[pc.lightBufferIdx].data[baseOffset + 9u],
+    buffers[pc.lightBufferIdx].data[baseOffset + 10u],
+    buffers[pc.lightBufferIdx].data[baseOffset + 11u]
     );
 
     return GPULight(positionRadius, colorIntensity, lightTypeData);
@@ -105,8 +105,8 @@ void main() {
 
         // Calculate tile bounds (world space)
         vec2 tileCenter = vec2(
-            (float(tileX) + 0.5f) * float(pc.tileSize),
-            (float(tileY) + 0.5f) * float(pc.tileSize)
+        (float(tileX) + 0.5f) * float(pc.tileSize),
+        (float(tileY) + 0.5f) * float(pc.tileSize)
         );
 
         // Conservative: all lights affect all tiles
@@ -121,7 +121,7 @@ void main() {
             }
         }
 
-        lightIdx += 256u;  // Next batch (16×16 = 256 threads)
+        lightIdx += 256u;// Next batch (16×16 = 256 threads)
     }
 
     barrier();

@@ -39,35 +39,35 @@ public class MeshConverter
         var vertexCount = (int)assimpMesh->MNumVertices;
         var vertices = new FrameworkMesh.Vertex[vertexCount];
 
-            // Get pointer to first texture coordinate channel
-            var texCoords0 = assimpMesh->MTextureCoords.Element0;
+        // Get pointer to first texture coordinate channel
+        var texCoords0 = assimpMesh->MTextureCoords.Element0;
 
-            for (int i = 0; i < vertexCount; i++)
+        for (var i = 0; i < vertexCount; i++)
+        {
+            var position = assimpMesh->MVertices[i];
+            var normal = assimpMesh->MNormals != null
+                ? assimpMesh->MNormals[i]
+                : new Vector3(0, 1, 0);
+
+            var texCoord = Vector2.Zero;
+            if (texCoords0 != null)
             {
-                var position = assimpMesh->MVertices[i];
-                var normal = assimpMesh->MNormals != null
-                    ? assimpMesh->MNormals[i]
-                    : new Vector3(0, 1, 0);
-
-                var texCoord = Vector2.Zero;
-                if (texCoords0 != null)
-                {
-                    var tc = texCoords0[i];
-                    texCoord = new Vector2(tc.X, tc.Y);
-                }
-
-                vertices[i] = new FrameworkMesh.Vertex
-                {
-                    Position = position,
-                    Normal = normal,
-                    TexCoord = texCoord
-                };
+                var tc = texCoords0[i];
+                texCoord = new Vector2(tc.X, tc.Y);
             }
+
+            vertices[i] = new FrameworkMesh.Vertex
+            {
+                Position = position,
+                Normal = normal,
+                TexCoord = texCoord
+            };
+        }
 
         // Convert indices
         var faceCount = (int)assimpMesh->MNumFaces;
         var indices = new uint[faceCount * 3]; // Assuming triangulated
-        for (int i = 0; i < faceCount; i++)
+        for (var i = 0; i < faceCount; i++)
         {
             var face = assimpMesh->MFaces[i];
             if (face.MNumIndices != 3)
@@ -98,8 +98,8 @@ public class MeshConverter
         if (vertices == null || vertices.Length == 0)
             return (Vector3.Zero, Vector3.One);
 
-        Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
-        Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+        var min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+        var max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
 
         foreach (var vertex in vertices)
         {

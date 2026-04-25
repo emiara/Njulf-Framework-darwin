@@ -75,16 +75,11 @@ public class RenderPassManager : IDisposable
         };
 
         if (_vk.CreateRenderPass(_device, &renderPassInfo, null, out _renderPass) != Result.Success)
-        {
             throw new Exception("Failed to create render pass");
-        }
     }
 
     public unsafe void Dispose()
     {
-        if (_renderPass.Handle != 0)
-        {
-            _vk.DestroyRenderPass(_device, _renderPass, null);
-        }
+        if (_renderPass.Handle != 0) _vk.DestroyRenderPass(_device, _renderPass, null);
     }
 }

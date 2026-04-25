@@ -17,7 +17,7 @@ public sealed unsafe class TextureManager : IDisposable
     {
         public Image Handle;
         public ImageView View;
-        public Allocation* Allocation; 
+        public Allocation* Allocation;
         public uint Width;
         public uint Height;
         public Format Format;
@@ -38,108 +38,106 @@ public sealed unsafe class TextureManager : IDisposable
     /// Do NOT use Mapped flag for images — that's only for buffers.
     /// </summary>
     public Handles.TextureHandle AllocateTexture(
-    uint width,
-    uint height,
-    Format format,
-    ImageUsageFlags usage,
-    ImageTiling tiling = ImageTiling.Optimal,
-    MemoryUsage memUsage = MemoryUsage.AutoPreferDevice)
-{
-    if (width == 0 || height == 0)
-        throw new ArgumentException("Image dimensions must be > 0");
-
-    var imageInfo = new ImageCreateInfo
+        uint width,
+        uint height,
+        Format format,
+        ImageUsageFlags usage,
+        ImageTiling tiling = ImageTiling.Optimal,
+        MemoryUsage memUsage = MemoryUsage.AutoPreferDevice)
     {
-        SType = StructureType.ImageCreateInfo,
-        ImageType = ImageType.Type2D,
-        Format = format,
-        Extent = new Extent3D { Width = width, Height = height, Depth = 1 },
-        MipLevels = 1,
-        ArrayLayers = 1,
-        Samples = SampleCountFlags.Count1Bit,
-        Tiling = tiling,
-        Usage = usage,
-        SharingMode = SharingMode.Exclusive,
-        InitialLayout = ImageLayout.Undefined
-    };
+        if (width == 0 || height == 0)
+            throw new ArgumentException("Image dimensions must be > 0");
 
-    var allocInfo = new AllocationCreateInfo
-    {
-        Usage = memUsage
-    };
-
-    ImageCreateInfo* pImageInfo = &imageInfo;
-    AllocationCreateInfo* pAllocInfo = &allocInfo;
-
-    // Declare output variables
-    Image image;
-    Vma.Allocation* allocation;
-    AllocationInfo allocationInfo;
-
-    // Create image
-    var result = Apis.CreateImage(
-        _allocator,
-        pImageInfo,
-        pAllocInfo,
-        &image,
-        &allocation,
-        &allocationInfo);
-
-    if (result != Result.Success)
-    {
-        throw new InvalidOperationException(
-            $"Failed to allocate image {width}x{height} (format={format}): {result}");
-    }
-
-    // Create image view
-    var aspectMask = GetAspectMask(format);
-
-    var viewInfo = new ImageViewCreateInfo
-    {
-        SType = StructureType.ImageViewCreateInfo,
-        Image = image,
-        ViewType = ImageViewType.Type2D,
-        Format = format,
-        Components = new ComponentMapping
+        var imageInfo = new ImageCreateInfo
         {
-            R = ComponentSwizzle.Identity,
-            G = ComponentSwizzle.Identity,
-            B = ComponentSwizzle.Identity,
-            A = ComponentSwizzle.Identity
-        },
-        SubresourceRange = new ImageSubresourceRange
+            SType = StructureType.ImageCreateInfo,
+            ImageType = ImageType.Type2D,
+            Format = format,
+            Extent = new Extent3D { Width = width, Height = height, Depth = 1 },
+            MipLevels = 1,
+            ArrayLayers = 1,
+            Samples = SampleCountFlags.Count1Bit,
+            Tiling = tiling,
+            Usage = usage,
+            SharingMode = SharingMode.Exclusive,
+            InitialLayout = ImageLayout.Undefined
+        };
+
+        var allocInfo = new AllocationCreateInfo
         {
-            AspectMask = aspectMask,
-            BaseMipLevel = 0,
-            LevelCount = 1,
-            BaseArrayLayer = 0,
-            LayerCount = 1
+            Usage = memUsage
+        };
+
+        var pImageInfo = &imageInfo;
+        var pAllocInfo = &allocInfo;
+
+        // Declare output variables
+        Image image;
+        Allocation* allocation;
+        AllocationInfo allocationInfo;
+
+        // Create image
+        var result = Apis.CreateImage(
+            _allocator,
+            pImageInfo,
+            pAllocInfo,
+            &image,
+            &allocation,
+            &allocationInfo);
+
+        if (result != Result.Success)
+            throw new InvalidOperationException(
+                $"Failed to allocate image {width}x{height} (format={format}): {result}");
+
+        // Create image view
+        var aspectMask = GetAspectMask(format);
+
+        var viewInfo = new ImageViewCreateInfo
+        {
+            SType = StructureType.ImageViewCreateInfo,
+            Image = image,
+            ViewType = ImageViewType.Type2D,
+            Format = format,
+            Components = new ComponentMapping
+            {
+                R = ComponentSwizzle.Identity,
+                G = ComponentSwizzle.Identity,
+                B = ComponentSwizzle.Identity,
+                A = ComponentSwizzle.Identity
+            },
+            SubresourceRange = new ImageSubresourceRange
+            {
+                AspectMask = aspectMask,
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            }
+        };
+
+        var pViewInfo = &viewInfo;
+        result = _vk.CreateImageView(_device, pViewInfo, null, out var view);
+
+        if (result != Result.Success)
+        {
+            Apis.DestroyImage(_allocator, image, allocation);
+            throw new InvalidOperationException(
+                $"Failed to create image view: {result}");
         }
-    };
 
-    ImageViewCreateInfo* pViewInfo = &viewInfo;
-    result = _vk.CreateImageView(_device, pViewInfo, null, out var view);
-    
-    if (result != Result.Success)
-    {
-        Apis.DestroyImage(_allocator, image, allocation);
-        throw new InvalidOperationException(
-            $"Failed to create image view: {result}");
+        var id = _nextId++;
+        _images[id] = new ImageEntry
+        {
+            Handle = image,
+            View = view,
+            Allocation = allocation, // Store pointer, not struct
+            Width = width,
+            Height = height,
+            Format = format
+        };
+
+        return new Handles.TextureHandle(id, 1);
     }
-
-    var id = _nextId++;
-    _images[id] = new ImageEntry
-    {
-        Handle = image,
-        View = view,
-        Allocation = allocation,  // Store pointer, not struct
-        Width = width,
-        Height = height,
-        Format = format
-    };
-
-    return new Handles.TextureHandle(id, 1);
-}
 
 
     /// <summary>
@@ -212,8 +210,8 @@ public sealed unsafe class TextureManager : IDisposable
         {
             // Depth-only formats
             Format.D16Unorm or
-            Format.D32Sfloat or
-            Format.X8D24UnormPack32 =>
+                Format.D32Sfloat or
+                Format.X8D24UnormPack32 =>
                 ImageAspectFlags.DepthBit,
 
             // Stencil-only formats
@@ -222,8 +220,8 @@ public sealed unsafe class TextureManager : IDisposable
 
             // Depth+Stencil formats
             Format.D16UnormS8Uint or
-            Format.D24UnormS8Uint or
-            Format.D32SfloatS8Uint =>
+                Format.D24UnormS8Uint or
+                Format.D32SfloatS8Uint =>
                 ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit,
 
             // Color formats (default)
@@ -239,6 +237,7 @@ public sealed unsafe class TextureManager : IDisposable
             _vk.DestroyImageView(_device, entry.View, null);
             Apis.DestroyImage(_allocator, entry.Handle, entry.Allocation);
         }
+
         _images.Clear();
     }
 }

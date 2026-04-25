@@ -48,7 +48,7 @@ public class MouseDevice
     /// </summary>
     public bool IsButtonPressed(int button)
     {
-        return _buttonStates.TryGetValue(button, out bool state) && state;
+        return _buttonStates.TryGetValue(button, out var state) && state;
     }
 
     /// <summary>
@@ -56,8 +56,8 @@ public class MouseDevice
     /// </summary>
     public bool WasButtonPressed(int button)
     {
-        bool currentState = _buttonStates.TryGetValue(button, out bool state) && state;
-        bool previousState = _previousButtonStates.TryGetValue(button, out bool prevState) && prevState;
+        var currentState = _buttonStates.TryGetValue(button, out var state) && state;
+        var previousState = _previousButtonStates.TryGetValue(button, out var prevState) && prevState;
         return currentState && !previousState;
     }
 
@@ -66,8 +66,8 @@ public class MouseDevice
     /// </summary>
     public bool WasButtonReleased(int button)
     {
-        bool currentState = _buttonStates.TryGetValue(button, out bool state) && state;
-        bool previousState = _previousButtonStates.TryGetValue(button, out bool prevState) && prevState;
+        var currentState = _buttonStates.TryGetValue(button, out var state) && state;
+        var previousState = _previousButtonStates.TryGetValue(button, out var prevState) && prevState;
         return !currentState && previousState;
     }
 
@@ -78,21 +78,17 @@ public class MouseDevice
     {
         // Save current button states as previous
         _previousButtonStates.Clear();
-        foreach (var kvp in _buttonStates)
-        {
-            _previousButtonStates[kvp.Key] = kvp.Value;
-        }
+        foreach (var kvp in _buttonStates) _previousButtonStates[kvp.Key] = kvp.Value;
 
         // Get current state
-        var nativeMouse = _mouse.NativeMouse;
-        _position = nativeMouse.Position;
+        _position = new Vector2D<float>(_mouse.Position.X, _mouse.Position.Y);
         _previousWheel = _wheelDelta;
-        _wheelDelta = nativeMouse.ScrollY;
+        _wheelDelta = _mouse.ScrollWheels.Count > 0 ? _mouse.ScrollWheels[0].Y : 0f;
 
         // Update button states (buttons 0-7 should be sufficient for most mice)
         for (int i = 0; i < 8; i++)
         {
-            _buttonStates[i] = nativeMouse[i];
+            _buttonStates[i] = _mouse.IsButtonPressed((MouseButton)i);
         }
     }
 }

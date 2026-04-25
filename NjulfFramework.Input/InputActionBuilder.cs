@@ -7,7 +7,7 @@ namespace NjulfFramework.Input;
 /// </summary>
 public class InputActionBuilder
 {
-    private readonly InputAction _action = new();
+    private InputAction _action = new();
 
     /// <summary>
     /// Creates a new builder for an input action.

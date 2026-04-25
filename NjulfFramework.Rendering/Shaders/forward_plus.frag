@@ -21,9 +21,9 @@ layout(location = 0) out vec4 outColor;
 // ============================================================================
 
 // Set 0: Bindless buffers
-layout(set = 0, binding = 0) readonly buffer BufferHeap 
-{ 
-    uint data[]; 
+layout(set = 0, binding = 0) readonly buffer BufferHeap
+{
+    uint data[];
 } buffers[65536];
 
 // Set 1: Bindless textures
@@ -62,9 +62,9 @@ layout(push_constant) uniform PushConstants
 
 struct GPULight
 {
-    vec4 positionRadius;    // xyz = position, w = radius
-    vec4 colorIntensity;    // xyz = color, w = intensity
-    uvec4 lightTypeData;    // x = light type, yzw = padding
+    vec4 positionRadius;// xyz = position, w = radius
+    vec4 colorIntensity;// xyz = color, w = intensity
+    uvec4 lightTypeData;// x = light type, yzw = padding
 };
 
 struct TiledLightHeader
@@ -83,7 +83,7 @@ uint getTileIndex(vec2 fragCoord)
     const uint TILE_SIZE = 16;
     uint tileX = uint(fragCoord.x) / TILE_SIZE;
     uint tileY = uint(fragCoord.y) / TILE_SIZE;
-    
+
     uint tilesPerRow = (pc.screenWidth + TILE_SIZE - 1u) / TILE_SIZE;
     return tileY * tilesPerRow + tileX;
 }
@@ -92,22 +92,22 @@ GPULight getLight(uint lightIdx)
 {
     uint baseOffset = lightIdx * 12u;
     vec4 positionRadius = vec4(
-        uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 0u]),
-        uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 1u]),
-        uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 2u]),
-        uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 3u])
+    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 0u]),
+    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 1u]),
+    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 2u]),
+    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 3u])
     );
     vec4 colorIntensity = vec4(
-        uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 4u]),
-        uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 5u]),
-        uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 6u]),
-        uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 7u])
+    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 4u]),
+    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 5u]),
+    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 6u]),
+    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 7u])
     );
     uvec4 lightTypeData = uvec4(
-        buffers[pc.lightBufferIndex].data[baseOffset + 8u],
-        buffers[pc.lightBufferIndex].data[baseOffset + 9u],
-        buffers[pc.lightBufferIndex].data[baseOffset + 10u],
-        buffers[pc.lightBufferIndex].data[baseOffset + 11u]
+    buffers[pc.lightBufferIndex].data[baseOffset + 8u],
+    buffers[pc.lightBufferIndex].data[baseOffset + 9u],
+    buffers[pc.lightBufferIndex].data[baseOffset + 10u],
+    buffers[pc.lightBufferIndex].data[baseOffset + 11u]
     );
     return GPULight(positionRadius, colorIntensity, lightTypeData);
 }
@@ -126,28 +126,28 @@ uint getLightIndex(uint globalIdx)
 }
 
 /// Compute Blinn-Phong lighting contribution from a single light.
-vec3 computeLightContribution(vec3 lightPos, vec3 lightColor, float lightIntensity, 
-                              float lightRadius, vec3 fragmentPos, vec3 normal, vec3 albedo)
+vec3 computeLightContribution(vec3 lightPos, vec3 lightColor, float lightIntensity,
+float lightRadius, vec3 fragmentPos, vec3 normal, vec3 albedo)
 {
     vec3 toLight = lightPos - fragmentPos;
     float distance = length(toLight);
     if (distance > lightRadius)
-        return vec3(0.0);
+    return vec3(0.0);
     vec3 lightDir = normalize(toLight);
-    
+
     // Attenuation (inverse square law)
     float attenuation = 1.0 / (distance * distance * 0.1 + 1.0);
-    
+
     // Lambertian diffuse
     float diffuse = max(dot(normal, lightDir), 0.0);
-    
+
     // View direction (approximate from fragment position)
     vec3 viewDir = normalize(-fragmentPos);
-    
+
     // Blinn-Phong specular
     vec3 halfDir = normalize(lightDir + viewDir);
     float specular = pow(max(dot(normal, halfDir), 0.0), 32.0);
-    
+
     // Combine
     vec3 contribution = (diffuse * albedo + specular * 0.5) * lightColor * lightIntensity * attenuation;
     return contribution;
@@ -171,17 +171,17 @@ void main()
     }
 
     // Get material data (simplified - would read from buffer in real implementation)
-    vec3 albedo = vec3(0.8, 0.8, 0.8);  // Default white
+    vec3 albedo = vec3(0.8, 0.8, 0.8);// Default white
     vec3 normal = inNormal;
     float nlen = length(normal);
     if (nlen < 1e-5)
-        normal = vec3(0.0, 1.0, 0.0);
+    normal = vec3(0.0, 1.0, 0.0);
     else
-        normal /= nlen;
-    
+    normal /= nlen;
+
     // Ambient lighting
     vec3 shading = albedo * 0.2;
-    
+
     if (pc.lightCount > 0u)
     {
         uint tileIdx = getTileIndex(gl_FragCoord.xy);
@@ -193,7 +193,7 @@ void main()
             uint lightIdx = getLightIndex(header.lightListOffset + i);
             GPULight light = getLight(lightIdx);
             if (light.lightTypeData.x != 0u)
-                continue;
+            continue;
 
             vec3 lightPos = light.positionRadius.xyz;
             float lightRadius = light.positionRadius.w;
@@ -201,9 +201,9 @@ void main()
             float lightIntensity = light.colorIntensity.w;
 
             shading += computeLightContribution(lightPos, lightColor, lightIntensity,
-                                                lightRadius, inPosition, normal, albedo);
+            lightRadius, inPosition, normal, albedo);
         }
     }
-    
+
     outColor = vec4(shading, 1.0);
 }

@@ -13,7 +13,7 @@ public class GraphicsPipeline : IDisposable
     private readonly Device _device;
     private Silk.NET.Vulkan.Pipeline _pipeline;
     public PipelineLayout PipelineLayout;
-    
+
     // Dynamic rendering formats (no more RenderPass needed!)
     private Format _colorFormat;
     private Format _depthFormat;
@@ -25,7 +25,7 @@ public class GraphicsPipeline : IDisposable
     public unsafe GraphicsPipeline(
         Vk vk,
         Device device,
-        RenderPass renderPass,  // DEPRECATED - kept for compatibility, ignored in dynamic rendering
+        RenderPass renderPass, // DEPRECATED - kept for compatibility, ignored in dynamic rendering
         Extent2D swapchainExtent,
         DescriptorSetLayout[] descriptorSetLayouts,
         Format colorFormat = Format.B8G8R8A8Unorm,
@@ -42,7 +42,7 @@ public class GraphicsPipeline : IDisposable
         Console.WriteLine($"Compiling vertex shader: {vertShaderPath}");
         var vertSpirv = ShaderCompiler.CompileGlslToSpirv(vertShaderPath, ShaderStage.Vertex);
         Console.WriteLine($"✓ Vertex shader compiled: {vertSpirv.Length} bytes");
-        
+
         Console.WriteLine($"Compiling fragment shader: {fragShaderPath}");
         var fragSpirv = ShaderCompiler.CompileGlslToSpirv(fragShaderPath, ShaderStage.Fragment);
         Console.WriteLine($"✓ Fragment shader compiled: {fragSpirv.Length} bytes");
@@ -149,11 +149,11 @@ public class GraphicsPipeline : IDisposable
                 {
                     SType = StructureType.PipelineViewportStateCreateInfo,
                     ViewportCount = 1,
-                    PViewports = null,  // ← NULL: Will be set dynamically
+                    PViewports = null, // ← NULL: Will be set dynamically
                     ScissorCount = 1,
-                    PScissors = null    // ← NULL: Will be set dynamically
+                    PScissors = null // ← NULL: Will be set dynamically
                 };
-                
+
                 var dynamicStates = stackalloc DynamicState[] { DynamicState.Viewport, DynamicState.Scissor };
                 var dynamicStateInfo = new PipelineDynamicStateCreateInfo
                 {
@@ -186,7 +186,7 @@ public class GraphicsPipeline : IDisposable
                 // Color blending
                 var colorBlendAttachment = new PipelineColorBlendAttachmentState
                 {
-                    ColorWriteMask = ColorComponentFlags.RBit | ColorComponentFlags.GBit | 
+                    ColorWriteMask = ColorComponentFlags.RBit | ColorComponentFlags.GBit |
                                      ColorComponentFlags.BBit | ColorComponentFlags.ABit,
                     BlendEnable = false
                 };
@@ -224,9 +224,9 @@ public class GraphicsPipeline : IDisposable
                     {
                         StageFlags = ShaderStageFlags.VertexBit | ShaderStageFlags.FragmentBit,
                         Offset = 0,
-                        Size = (uint)sizeof(Data.RenderingData.PushConstants) 
+                        Size = (uint)sizeof(Data.RenderingData.PushConstants)
                     };
-                    
+
                     var pipelineLayoutInfo = new PipelineLayoutCreateInfo
                     {
                         SType = StructureType.PipelineLayoutCreateInfo,
@@ -236,14 +236,12 @@ public class GraphicsPipeline : IDisposable
                         PPushConstantRanges = &pushConstantRange
                     };
 
-                    if (vk.CreatePipelineLayout(device, pipelineLayoutInfo, null, out PipelineLayout) 
+                    if (vk.CreatePipelineLayout(device, pipelineLayoutInfo, null, out PipelineLayout)
                         != Result.Success)
-                    {
                         throw new Exception("Failed to create pipeline layout");
-                    }
                 }
-                
-                
+
+
                 // This replaces VkRenderPass and VkFramebuffer in the pipeline creation
                 var colorAttachmentFormat = _colorFormat;
                 var depthAttachmentFormat = _depthFormat;
@@ -254,7 +252,7 @@ public class GraphicsPipeline : IDisposable
                     ColorAttachmentCount = 1,
                     PColorAttachmentFormats = &colorAttachmentFormat,
                     DepthAttachmentFormat = depthAttachmentFormat,
-                    StencilAttachmentFormat = Format.Undefined  // Not using stencil
+                    StencilAttachmentFormat = Format.Undefined // Not using stencil
                 };
 
                 // Create pipeline WITH dynamic rendering, WITHOUT render pass
@@ -279,10 +277,8 @@ public class GraphicsPipeline : IDisposable
                     BasePipelineIndex = -1
                 };
 
-                if (_vk.CreateGraphicsPipelines(_device, default, 1, &pipelineInfo, null, out var pipeline) != Result.Success)
-                {
-                    throw new Exception("Failed to create graphics pipeline with dynamic rendering");
-                }
+                if (_vk.CreateGraphicsPipelines(_device, default, 1, &pipelineInfo, null, out var pipeline) !=
+                    Result.Success) throw new Exception("Failed to create graphics pipeline with dynamic rendering");
 
                 _pipeline = pipeline;
 
@@ -298,10 +294,7 @@ public class GraphicsPipeline : IDisposable
         catch (Exception ex)
         {
             Console.WriteLine($"✗ Failed to create graphics pipeline: {ex.Message}");
-            if (ex.InnerException != null)
-            {
-                Console.WriteLine($"  Inner exception: {ex.InnerException.Message}");
-            }
+            if (ex.InnerException != null) Console.WriteLine($"  Inner exception: {ex.InnerException.Message}");
             throw;
         }
     }
@@ -318,9 +311,7 @@ public class GraphicsPipeline : IDisposable
             };
 
             if (_vk.CreateShaderModule(_device, &createInfo, null, out var shaderModule) != Result.Success)
-            {
                 throw new Exception("Failed to create shader module");
-            }
 
             return shaderModule;
         }
@@ -328,14 +319,8 @@ public class GraphicsPipeline : IDisposable
 
     public unsafe void Dispose()
     {
-        if (_pipeline.Handle != 0)
-        {
-            _vk.DestroyPipeline(_device, _pipeline, null);
-        }
+        if (_pipeline.Handle != 0) _vk.DestroyPipeline(_device, _pipeline, null);
 
-        if (PipelineLayout.Handle != 0)
-        {
-            _vk.DestroyPipelineLayout(_device, PipelineLayout, null);
-        }
+        if (PipelineLayout.Handle != 0) _vk.DestroyPipelineLayout(_device, PipelineLayout, null);
     }
 }

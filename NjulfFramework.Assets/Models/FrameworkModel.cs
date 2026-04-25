@@ -46,6 +46,7 @@ public class FrameworkMesh
     {
         public Vector3 Position;
         public Vector3 Normal;
+
         public Vector2 TexCoord;
         // Additional attributes as needed
     }
@@ -82,7 +83,7 @@ public class FrameworkMaterial
 /// </summary>
 public enum AlphaMode
 {
-    Opaque,  // Fully opaque
-    Mask,    // Binary transparency with cutoff
-    Blend    // Alpha blending
+    Opaque, // Fully opaque
+    Mask, // Binary transparency with cutoff
+    Blend // Alpha blending
 }

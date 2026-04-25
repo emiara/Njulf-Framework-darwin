@@ -58,22 +58,13 @@ public unsafe class VulkanContext : IDisposable
         var layers = enableValidation ? GetValidationLayers() : Array.Empty<string>();
 
         Console.WriteLine($"Requesting {extensions.Length} extensions:");
-        foreach (var ext in extensions)
-        {
-            Console.WriteLine($"  - {ext}");
-        }
+        foreach (var ext in extensions) Console.WriteLine($"  - {ext}");
 
         var enabledExtensionNames = new List<IntPtr>();
-        foreach (var ext in extensions)
-        {
-            enabledExtensionNames.Add(SilkMarshal.StringToPtr(ext));
-        }
+        foreach (var ext in extensions) enabledExtensionNames.Add(SilkMarshal.StringToPtr(ext));
 
         var enabledLayerNames = new List<IntPtr>();
-        foreach (var layer in layers)
-        {
-            enabledLayerNames.Add(SilkMarshal.StringToPtr(layer));
-        }
+        foreach (var layer in layers) enabledLayerNames.Add(SilkMarshal.StringToPtr(layer));
 
         var extensionArray = enabledExtensionNames.ToArray();
         var layerArray = enabledLayerNames.ToArray();
@@ -92,23 +83,18 @@ public unsafe class VulkanContext : IDisposable
             };
 
             if (_vk.CreateInstance(&createInfo, null, out _instance) != Result.Success)
-            {
-                throw new Exception("Failed to create Vulkan instance. Check that Vulkan SDK is installed and GPU drivers are up to date.");
-            }
+                throw new Exception(
+                    "Failed to create Vulkan instance. Check that Vulkan SDK is installed and GPU drivers are up to date.");
         }
 
         // Reload Vk with the instance - IMPORTANT for extensions to work
         if (!_vk.TryGetInstanceExtension(_instance, out KhrSurface khrSurface))
-        {
             throw new Exception("Failed to load KHR_surface extension");
-        }
 
         if (!_vk.TryGetInstanceExtension(_instance, out KhrWin32Surface khrWin32Surface) &&
             !_vk.TryGetInstanceExtension(_instance, out KhrXcbSurface khrXcbSurface) &&
             !_vk.TryGetInstanceExtension(_instance, out KhrWaylandSurface khrWaylandSurface))
-        {
             Console.WriteLine("Warning: Could not load platform-specific surface extension");
-        }
 
         // Cleanup temp allocations
         foreach (var ptr in enabledExtensionNames)
@@ -124,16 +110,10 @@ public unsafe class VulkanContext : IDisposable
     {
         uint deviceCount = 0;
         var result = _vk.EnumeratePhysicalDevices(_instance, &deviceCount, null);
-        
-        if (result != Result.Success)
-        {
-            throw new Exception($"Failed to enumerate physical devices: {result}");
-        }
 
-        if (deviceCount == 0)
-        {
-            throw new Exception("No Vulkan-capable GPUs found");
-        }
+        if (result != Result.Success) throw new Exception($"Failed to enumerate physical devices: {result}");
+
+        if (deviceCount == 0) throw new Exception("No Vulkan-capable GPUs found");
 
         Console.WriteLine($"Found {deviceCount} physical device(s)");
 
@@ -141,10 +121,7 @@ public unsafe class VulkanContext : IDisposable
         fixed (PhysicalDevice* devicesPtr = devices)
         {
             result = _vk.EnumeratePhysicalDevices(_instance, &deviceCount, devicesPtr);
-            if (result != Result.Success)
-            {
-                throw new Exception($"Failed to get physical device list: {result}");
-            }
+            if (result != Result.Success) throw new Exception($"Failed to get physical device list: {result}");
         }
 
         _physicalDevice = devices[0]; // For now, select first device
@@ -161,12 +138,12 @@ public unsafe class VulkanContext : IDisposable
     private unsafe void VerifyVulkan13Support()
     {
         _vk.GetPhysicalDeviceProperties(_physicalDevice, out var properties);
-        
-        uint apiVersion = properties.ApiVersion;
-        
+
+        var apiVersion = properties.ApiVersion;
+
         if (apiVersion < Vk.Version13)
             throw new Exception("Vulkan version 1.3 is not supported on this device");
-        
+
         Console.WriteLine($"Vulkan version 1.3 is supported on this device");
     }
 
@@ -183,10 +160,7 @@ public unsafe class VulkanContext : IDisposable
         };
 
         _vk.GetPhysicalDeviceFeatures2(_physicalDevice, &features2);
-        if (!meshFeatures.MeshShader)
-        {
-            throw new Exception("VK_EXT_mesh_shader is not supported on this device");
-        }
+        if (!meshFeatures.MeshShader) throw new Exception("VK_EXT_mesh_shader is not supported on this device");
     }
 
     private void CreateLogicalDevice(bool enableValidation)
@@ -195,17 +169,18 @@ public unsafe class VulkanContext : IDisposable
 
         var queueCreateInfos = new List<DeviceQueueCreateInfo>();
         var uniqueQueueFamilies = new HashSet<uint> { _graphicsQueueFamily, _transferQueueFamily };
-        
+
         var features13 = new PhysicalDeviceVulkan13Features();
-        var features2 = new PhysicalDeviceFeatures2 { 
+        var features2 = new PhysicalDeviceFeatures2
+        {
             SType = StructureType.PhysicalDeviceFeatures2,
-            PNext = &features13 
+            PNext = &features13
         };
         _vk.GetPhysicalDeviceFeatures2(_physicalDevice, &features2);
 
         Console.WriteLine($"DynamicRendering supported: {features13.DynamicRendering.Value}");
 
-        float queuePriority = 1.0f;
+        var queuePriority = 1.0f;
         foreach (var queueFamily in uniqueQueueFamilies)
         {
             var queueCreateInfo = new DeviceQueueCreateInfo
@@ -217,31 +192,30 @@ public unsafe class VulkanContext : IDisposable
             };
             queueCreateInfos.Add(queueCreateInfo);
         }
-        
-        var vulkan13Features = new PhysicalDeviceVulkan13Features()
+
+        var vulkan13Features = new PhysicalDeviceVulkan13Features
         {
             SType = StructureType.PhysicalDeviceVulkan13Features,
             PNext = null,
             DynamicRendering = true,
             Synchronization2 = true,
-            Maintenance4 = true,
-            
+            Maintenance4 = true
         };
-        
-        var rtPipelineFeatures = new PhysicalDeviceRayTracingPipelineFeaturesKHR()
+
+        var rtPipelineFeatures = new PhysicalDeviceRayTracingPipelineFeaturesKHR
         {
             SType = StructureType.PhysicalDeviceRayTracingPipelineFeaturesKhr,
             PNext = &vulkan13Features,
             RayTracingPipeline = true
         };
-        
+
         var asFeatures = new PhysicalDeviceAccelerationStructureFeaturesKHR
         {
             SType = StructureType.PhysicalDeviceAccelerationStructureFeaturesKhr,
             PNext = &rtPipelineFeatures,
             AccelerationStructure = true
         };
-        
+
         var robustness2Features = new PhysicalDeviceRobustness2FeaturesEXT
         {
             SType = StructureType.PhysicalDeviceRobustness2FeaturesExt,
@@ -257,7 +231,7 @@ public unsafe class VulkanContext : IDisposable
             TaskShader = true
         };
 
-        var vulkan12Features = new PhysicalDeviceVulkan12Features()
+        var vulkan12Features = new PhysicalDeviceVulkan12Features
         {
             SType = StructureType.PhysicalDeviceVulkan12Features,
             PNext = &meshShaderFeatures,
@@ -272,7 +246,7 @@ public unsafe class VulkanContext : IDisposable
             DescriptorBindingUpdateUnusedWhilePending = true,
             ShaderSampledImageArrayNonUniformIndexing = true
         };
-        
+
         var deviceFeatures = new PhysicalDeviceFeatures();
 
         var extensions = new[]
@@ -283,17 +257,13 @@ public unsafe class VulkanContext : IDisposable
             KhrDeferredHostOperations.ExtensionName,
             KhrSynchronization2.ExtensionName,
             KhrDynamicRendering.ExtensionName,
-            ExtMeshShader.ExtensionName,
-            
+            ExtMeshShader.ExtensionName
         };
         var extensionPtrs = new List<IntPtr>();
-        foreach (var ext in extensions)
-        {
-            extensionPtrs.Add((IntPtr)SilkMarshal.StringToPtr(ext));
-        }
-        
+        foreach (var ext in extensions) extensionPtrs.Add((IntPtr)SilkMarshal.StringToPtr(ext));
+
         var extensionArray = extensionPtrs.ToArray();
-        
+
         fixed (IntPtr* extensionPtr = extensionArray)
         {
             // Get layer names
@@ -301,17 +271,16 @@ public unsafe class VulkanContext : IDisposable
 
             // Marshal to unmanaged memory
             var layerNamesPointers = stackalloc nint[layerNames.Length];
-            for (int i = 0; i < layerNames.Length; i++)
-            {
+            for (var i = 0; i < layerNames.Length; i++)
                 layerNamesPointers[i] = (nint)Marshal.StringToHGlobalAnsi(layerNames[i]);
-            }
             var createInfo = new DeviceCreateInfo
             {
                 SType = StructureType.DeviceCreateInfo,
                 PNext = &vulkan12Features,
                 QueueCreateInfoCount = (uint)queueCreateInfos.Count,
                 PQueueCreateInfos =
-                    (DeviceQueueCreateInfo*)Marshal.AllocHGlobal(queueCreateInfos.Count * sizeof(DeviceQueueCreateInfo)),
+                    (DeviceQueueCreateInfo*)Marshal.AllocHGlobal(queueCreateInfos.Count *
+                                                                 sizeof(DeviceQueueCreateInfo)),
                 PEnabledFeatures = &deviceFeatures,
                 EnabledExtensionCount = (uint)extensionPtrs.Count,
                 PpEnabledExtensionNames = (byte**)extensionPtr,
@@ -321,15 +290,10 @@ public unsafe class VulkanContext : IDisposable
 
             // Copy queue create infos
             var queueCreateInfoArray = createInfo.PQueueCreateInfos;
-            for (int i = 0; i < queueCreateInfos.Count; i++)
-            {
-                queueCreateInfoArray[i] = queueCreateInfos[i];
-            }
+            for (var i = 0; i < queueCreateInfos.Count; i++) queueCreateInfoArray[i] = queueCreateInfos[i];
 
             if (_vk.CreateDevice(_physicalDevice, &createInfo, null, out _device) != Result.Success)
-            {
                 throw new Exception("Failed to create logical device");
-            }
 
             _vk.GetDeviceQueue(_device, _graphicsQueueFamily, 0, out _graphicsQueue);
             _vk.GetDeviceQueue(_device, _transferQueueFamily, 0, out _transferQueue);
@@ -337,16 +301,13 @@ public unsafe class VulkanContext : IDisposable
             Marshal.FreeHGlobal((nint)createInfo.PQueueCreateInfos);
 
             // Free layer names - they were allocated with StringToHGlobalAnsi and must be freed
-            for (int i = 0; i < layerNames.Length; i++)
-            {
-                Marshal.FreeHGlobal((nint)layerNamesPointers[i]);
-            }
+            for (var i = 0; i < layerNames.Length; i++) Marshal.FreeHGlobal((nint)layerNamesPointers[i]);
         }
-        
+
         foreach (var ptr in extensionPtrs)
-                Marshal.FreeHGlobal(ptr);
+            Marshal.FreeHGlobal(ptr);
     }
-    
+
     private void CreateVmaAllocator()
     {
         var createInfo = new AllocatorCreateInfo
@@ -359,7 +320,7 @@ public unsafe class VulkanContext : IDisposable
         };
 
         Allocator* allocator;
-        
+
         Apis.CreateAllocator(&createInfo, &allocator);
         _vmaAllocator = allocator;
     }
@@ -380,50 +341,32 @@ public unsafe class VulkanContext : IDisposable
 
         for (uint i = 0; i < queueFamilies.Length; i++)
         {
-            if ((queueFamilies[i].QueueFlags & QueueFlags.GraphicsBit) != 0)
-            {
-                _graphicsQueueFamily = i;
-            }
+            if ((queueFamilies[i].QueueFlags & QueueFlags.GraphicsBit) != 0) _graphicsQueueFamily = i;
 
             if ((queueFamilies[i].QueueFlags & QueueFlags.TransferBit) != 0 && i != _graphicsQueueFamily)
-            {
                 _transferQueueFamily = i;
-            }
         }
 
-        if (_transferQueueFamily == uint.MaxValue)
-        {
-            _transferQueueFamily = _graphicsQueueFamily;
-        }
+        if (_transferQueueFamily == uint.MaxValue) _transferQueueFamily = _graphicsQueueFamily;
 
-        if (_graphicsQueueFamily == uint.MaxValue)
-        {
-            throw new Exception("No suitable graphics queue family found");
-        }
+        if (_graphicsQueueFamily == uint.MaxValue) throw new Exception("No suitable graphics queue family found");
     }
 
     private string[] GetRequiredExtensions(bool enableValidation)
     {
         var extensions = new List<string>
         {
-            KhrSurface.ExtensionName,
+            KhrSurface.ExtensionName
         };
 
         // Add platform-specific surface extension
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
             extensions.Add(KhrWin32Surface.ExtensionName);
-        }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
             // Try Xcb first (most common)
             extensions.Add(KhrXcbSurface.ExtensionName);
-        }
 
-        if (enableValidation)
-        {
-            extensions.Add(ExtDebugUtils.ExtensionName);
-        }
+        if (enableValidation) extensions.Add(ExtDebugUtils.ExtensionName);
 
         return extensions.ToArray();
     }
@@ -447,10 +390,6 @@ public unsafe class VulkanContext : IDisposable
             _vk.DestroyDevice(_device, null);
         }
 
-        if (_instance.Handle != 0)
-        {
-            _vk.DestroyInstance(_instance, null);
-        }
+        if (_instance.Handle != 0) _vk.DestroyInstance(_instance, null);
     }
 }
-    

@@ -177,6 +177,7 @@ public struct GPUMeshData
     /// Padding to align to 16-byte boundary.
     /// </summary>
     public uint Padding3;
+
     public uint Padding4;
 
     public GPUMeshData(uint vertexBufferIndex, uint indexBufferIndex,
@@ -213,10 +214,10 @@ public struct GPUMeshData
         if (vertices.Length == 0)
             return (Vector3.Zero, Vector3.Zero);
 
-        Vector3 min = vertices[0].Position;
-        Vector3 max = vertices[0].Position;
+        var min = vertices[0].Position;
+        var max = vertices[0].Position;
 
-        for (int i = 1; i < vertices.Length; i++)
+        for (var i = 1; i < vertices.Length; i++)
         {
             min = Vector3.Min(min, vertices[i].Position);
             max = Vector3.Max(max, vertices[i].Position);
@@ -279,9 +280,9 @@ public class GPUSceneFrame
     public static void ValidateStructureSizes()
     {
         // All GPU structures must be multiples of 16 bytes (std430 layout requirement)
-        uint objectDataSize = GPUObjectData.GetSizeInBytes();
-        uint materialSize = GPUMaterial.GetSizeInBytes();
-        uint meshDataSize = GPUMeshData.GetSizeInBytes();
+        var objectDataSize = GPUObjectData.GetSizeInBytes();
+        var materialSize = GPUMaterial.GetSizeInBytes();
+        var meshDataSize = GPUMeshData.GetSizeInBytes();
 
         if (objectDataSize % 16 != 0)
             throw new InvalidOperationException(

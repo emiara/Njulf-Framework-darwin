@@ -40,7 +40,7 @@ public sealed class FrameUploadRing : IDisposable
         _writeOffsets = new ulong[MaxFrames];
 
         // Create one big CPU-visible + mapped buffer per frame
-        for (int i = 0; i < MaxFrames; i++)
+        for (var i = 0; i < MaxFrames; i++)
         {
             _uploadBuffers[i] = _bufferManager.AllocateBuffer(
                 UploadSize,
@@ -86,7 +86,7 @@ public sealed class FrameUploadRing : IDisposable
         if (dstPtr == IntPtr.Zero)
             throw new InvalidOperationException("Current upload buffer is not mapped.");
 
-        ulong bytes = (ulong)(data.Length * sizeof(T));
+        var bytes = (ulong)(data.Length * sizeof(T));
         var frameOffset = _writeOffsets[CurrentFrameIndex];
         if (frameOffset + bytes > UploadSize)
             throw new InvalidOperationException(
@@ -123,12 +123,9 @@ public sealed class FrameUploadRing : IDisposable
 
     public void Dispose()
     {
-        for (int i = 0; i < _uploadBuffers.Length; i++)
+        for (var i = 0; i < _uploadBuffers.Length; i++)
         {
-            if (_uploadBuffers[i].IsValid)
-            {
-                _bufferManager.DestroyBuffer(_uploadBuffers[i]);
-            }
+            if (_uploadBuffers[i].IsValid) _bufferManager.DestroyBuffer(_uploadBuffers[i]);
 
             _cpuMappings[i] = IntPtr.Zero;
             _writeOffsets[i] = 0;

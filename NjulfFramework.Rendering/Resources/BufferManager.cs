@@ -16,7 +16,7 @@ public sealed unsafe class BufferManager : IDisposable
     private sealed class BufferEntry
     {
         public Buffer Handle;
-        public Allocation* Allocation;  
+        public Allocation* Allocation;
         public ulong Size;
         public IntPtr MappedData;
     }
@@ -33,7 +33,7 @@ public sealed unsafe class BufferManager : IDisposable
     /// <summary>
     /// Allocate a new GPU buffer.
     /// </summary>
-    public Handles.BufferHandle AllocateBuffer(
+    public BufferHandle AllocateBuffer(
         ulong size,
         BufferUsageFlags usage,
         MemoryUsage memUsage,
@@ -67,8 +67,8 @@ public sealed unsafe class BufferManager : IDisposable
         //     throw new InvalidOperationException(
         //         $"Failed to allocate buffer: {result}");
         // }
-        BufferCreateInfo* pBufferInfo = &bufferInfo;
-        AllocationCreateInfo* pAllocInfo = &allocInfo;
+        var pBufferInfo = &bufferInfo;
+        var pAllocInfo = &allocInfo;
 
         Buffer buffer;
         Allocation* allocation;
@@ -83,12 +83,10 @@ public sealed unsafe class BufferManager : IDisposable
             &allocationInfo);
 
         if (result != Result.Success)
-        {
             throw new InvalidOperationException(
                 $"Failed to allocate buffer: {result}");
-        }
 
-        IntPtr mappedPtr = (IntPtr)allocationInfo.PMappedData;
+        var mappedPtr = (IntPtr)allocationInfo.PMappedData;
 
         var id = _nextId++;
         _buffers[id] = new BufferEntry
@@ -99,24 +97,24 @@ public sealed unsafe class BufferManager : IDisposable
             MappedData = mappedPtr
         };
 
-        return new Handles.BufferHandle(id, 1);
+        return new BufferHandle(id, 1);
     }
 
-    public Buffer GetBuffer(Handles.BufferHandle handle)
+    public Buffer GetBuffer(BufferHandle handle)
     {
         if (!_buffers.TryGetValue(handle.Index, out var entry))
             throw new InvalidOperationException($"Buffer handle {handle} not found");
         return entry.Handle;
     }
 
-    public Allocation* GetAllocation(Handles.BufferHandle handle)
+    public Allocation* GetAllocation(BufferHandle handle)
     {
         if (!_buffers.TryGetValue(handle.Index, out var entry))
             throw new InvalidOperationException($"Buffer handle {handle} not found");
         return entry.Allocation;
     }
 
-    public ulong GetBufferSize(Handles.BufferHandle handle)
+    public ulong GetBufferSize(BufferHandle handle)
     {
         if (!_buffers.TryGetValue(handle.Index, out var entry))
             throw new InvalidOperationException($"Buffer handle {handle} not found");
@@ -127,7 +125,7 @@ public sealed unsafe class BufferManager : IDisposable
     /// Get device address for ray tracing or GPU-driven submission.
     /// Requires BufferUsageFlags.ShaderDeviceAddress set at creation time.
     /// </summary>
-    public ulong GetBufferDeviceAddress(Handles.BufferHandle handle)
+    public ulong GetBufferDeviceAddress(BufferHandle handle)
     {
         var buffer = GetBuffer(handle);
         var addrInfo = new BufferDeviceAddressInfo
@@ -141,7 +139,7 @@ public sealed unsafe class BufferManager : IDisposable
     /// <summary>
     /// Get mapped CPU pointer for writing (buffer must be allocated with Mapped flag).
     /// </summary>
-    public IntPtr GetMappedPointer(Handles.BufferHandle handle)
+    public IntPtr GetMappedPointer(BufferHandle handle)
     {
         if (!_buffers.TryGetValue(handle.Index, out var entry))
             throw new InvalidOperationException($"Buffer handle {handle} not found");
@@ -156,7 +154,7 @@ public sealed unsafe class BufferManager : IDisposable
     /// <summary>
     /// Write data to a mapped buffer (CPU-side).
     /// </summary>
-    public void WriteData<T>(Handles.BufferHandle handle, ReadOnlySpan<T> data)
+    public void WriteData<T>(BufferHandle handle, ReadOnlySpan<T> data)
         where T : unmanaged
     {
         if (data.IsEmpty)
@@ -179,7 +177,7 @@ public sealed unsafe class BufferManager : IDisposable
     /// <summary>
     /// Flush a mapped buffer range to GPU (needed for non-coherent memory).
     /// </summary>
-    public void FlushBuffer(Handles.BufferHandle handle, ulong offset = 0, ulong size = ulong.MaxValue)
+    public void FlushBuffer(BufferHandle handle, ulong offset = 0, ulong size = ulong.MaxValue)
     {
         var alloc = GetAllocation(handle);
         var actualSize = size == ulong.MaxValue ? GetBufferSize(handle) : size;
@@ -189,7 +187,7 @@ public sealed unsafe class BufferManager : IDisposable
     /// <summary>
     /// Invalidate a mapped buffer range (reading from GPU).
     /// </summary>
-    public void InvalidateBuffer(Handles.BufferHandle handle, ulong offset = 0, ulong size = ulong.MaxValue)
+    public void InvalidateBuffer(BufferHandle handle, ulong offset = 0, ulong size = ulong.MaxValue)
     {
         var alloc = GetAllocation(handle);
         var actualSize = size == ulong.MaxValue ? GetBufferSize(handle) : size;
@@ -199,15 +197,14 @@ public sealed unsafe class BufferManager : IDisposable
     /// <summary>
     /// Free a buffer handle. The handle becomes invalid after this.
     /// </summary>
-    public void FreeBuffer(Handles.BufferHandle handle)
+    public void FreeBuffer(BufferHandle handle)
     {
         if (!_buffers.Remove(handle.Index, out var entry))
             return;
-        
+
         Apis.DestroyBuffer(_allocator, entry.Handle, entry.Allocation);
-        
     }
-    
+
     public void DestroyBuffer(BufferHandle handle)
     {
         if (!handle.IsValid)
@@ -222,10 +219,7 @@ public sealed unsafe class BufferManager : IDisposable
 
     public void Dispose()
     {
-        foreach (var (_, entry) in _buffers)
-        {
-            Apis.DestroyBuffer(_allocator, entry.Handle, entry.Allocation);
-        }
+        foreach (var (_, entry) in _buffers) Apis.DestroyBuffer(_allocator, entry.Handle, entry.Allocation);
         _buffers.Clear();
     }
 }

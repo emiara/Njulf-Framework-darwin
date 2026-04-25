@@ -13,12 +13,12 @@ namespace NjulfFramework.Assets;
 /// </summary>
 public class RendererAdapter
 {
-     /// <summary>
-     /// Constructor
-     /// </summary>
-     public RendererAdapter()
-     {
-     }
+    /// <summary>
+    /// Constructor
+    /// </summary>
+    public RendererAdapter()
+    {
+    }
 
     /// <summary>
     /// Convert framework model to renderable objects
@@ -31,18 +31,14 @@ public class RendererAdapter
         var renderObjects = new List<RenderingData.RenderObject>();
 
 
-
         // Convert each mesh to a render object
-        for (int meshIndex = 0; meshIndex < frameworkModel.Meshes.Count; meshIndex++)
+        for (var meshIndex = 0; meshIndex < frameworkModel.Meshes.Count; meshIndex++)
         {
             var frameworkMesh = frameworkModel.Meshes[meshIndex];
             var materialIndex = frameworkMesh.MaterialIndex;
 
             // Ensure material index is valid
-            if (materialIndex < 0 || materialIndex >= frameworkModel.Materials.Count)
-            {
-                 materialIndex = 0;
-            }
+            if (materialIndex < 0 || materialIndex >= frameworkModel.Materials.Count) materialIndex = 0;
 
             var frameworkMaterial = frameworkModel.Materials[materialIndex];
 
@@ -53,10 +49,9 @@ public class RendererAdapter
             var renderingMaterial = ConvertMaterial(frameworkMaterial);
 
             // Create render object
-            var renderObject = new RenderingData.RenderObject(frameworkMesh.Name, renderingMesh, renderingMaterial, Matrix4x4.Identity);
+            var renderObject = new RenderingData.RenderObject(frameworkMesh.Name, renderingMesh, renderingMaterial,
+                Matrix4x4.Identity);
             renderObjects.Add(renderObject);
-
-
         }
 
 
@@ -70,7 +65,7 @@ public class RendererAdapter
     {
         // Convert vertices
         var vertices = new RenderingData.Vertex[frameworkMesh.Vertices.Length];
-        for (int i = 0; i < frameworkMesh.Vertices.Length; i++)
+        for (var i = 0; i < frameworkMesh.Vertices.Length; i++)
         {
             var frameworkVertex = frameworkMesh.Vertices[i];
             vertices[i] = new RenderingData.Vertex(
@@ -125,7 +120,8 @@ public class RendererAdapter
     /// <summary>
     /// Convert framework model to renderable objects with scene hierarchy
     /// </summary>
-    public List<RenderingData.RenderObject> ConvertWithHierarchy(FrameworkModel frameworkModel, FrameworkModel.SceneNode sceneNode, Matrix4x4 parentTransform)
+    public List<RenderingData.RenderObject> ConvertWithHierarchy(FrameworkModel frameworkModel,
+        FrameworkModel.SceneNode sceneNode, Matrix4x4 parentTransform)
     {
         var renderObjects = new List<RenderingData.RenderObject>();
 
@@ -135,25 +131,19 @@ public class RendererAdapter
         // Create render objects for meshes in this node
         foreach (var meshIndex in sceneNode.MeshIndices)
         {
-            if (meshIndex < 0 || meshIndex >= frameworkModel.Meshes.Count)
-            {
-
-                continue;
-            }
+            if (meshIndex < 0 || meshIndex >= frameworkModel.Meshes.Count) continue;
 
             var frameworkMesh = frameworkModel.Meshes[meshIndex];
             var materialIndex = frameworkMesh.MaterialIndex;
 
-            if (materialIndex < 0 || materialIndex >= frameworkModel.Materials.Count)
-            {
-                 materialIndex = 0;
-            }
+            if (materialIndex < 0 || materialIndex >= frameworkModel.Materials.Count) materialIndex = 0;
 
             var frameworkMaterial = frameworkModel.Materials[materialIndex];
             var renderingMesh = ConvertMesh(frameworkMesh);
             var renderingMaterial = ConvertMaterial(frameworkMaterial);
 
-            var renderObject = new RenderingData.RenderObject(frameworkMesh.Name, renderingMesh, renderingMaterial, currentTransform);
+            var renderObject = new RenderingData.RenderObject(frameworkMesh.Name, renderingMesh, renderingMaterial,
+                currentTransform);
             renderObjects.Add(renderObject);
         }
 

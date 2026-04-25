@@ -28,21 +28,21 @@ public class TiledLightCullingPass : RenderGraphPass
     private readonly Vk _vk;
     private readonly Device _device;
     private readonly LightManager _lightManager;
-    
+
     private ComputePipeline _computePipeline;
-    
+
     private BufferHandle _tiledLightHeaderBuffer;
     private Buffer _tiledLightHeaderBufferVk;
-    private uint _tiledLightHeaderBufferIndex; 
-    
+    private uint _tiledLightHeaderBufferIndex;
+
     private BufferHandle _tiledLightIndicesBuffer;
     private Buffer _tiledLightIndicesBufferVk;
-    private uint _tiledLightIndicesBufferIndex; 
+    private uint _tiledLightIndicesBufferIndex;
 
     // Tile configuration
-    private const uint TileSize = 16;  // 16x16 pixel tiles
+    private const uint TileSize = 16; // 16x16 pixel tiles
     private const uint MaxLightsPerTile = 256;
-    private const uint MaxTiles = (1920 / TileSize) * (1080 / TileSize) + 1;  // ~6400 tiles @ 1080p
+    private const uint MaxTiles = 1920 / TileSize * (1080 / TileSize) + 1; // ~6400 tiles @ 1080p
 
     /// <summary>
     /// Initialize tiled light culling pass.
@@ -73,11 +73,11 @@ public class TiledLightCullingPass : RenderGraphPass
 
         // Step 2: Allocate tiled light header buffer (one header per tile)
         _tiledLightHeaderBuffer = bufferManager.AllocateBuffer(
-            MaxTiles * 8,  // 8 bytes per header (offset + count)
+            MaxTiles * 8, // 8 bytes per header (offset + count)
             BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
             Vma.MemoryUsage.AutoPreferDevice);
         _tiledLightHeaderBufferVk = bufferManager.GetBuffer(_tiledLightHeaderBuffer);
-        
+
         // Register with bindless heap
         if (!bindlessHeap.TryAllocateBufferIndex(out _tiledLightHeaderBufferIndex))
             throw new Exception("Failed to allocate bindless index for tiled light header buffer");
@@ -85,15 +85,16 @@ public class TiledLightCullingPass : RenderGraphPass
 
         // Step 3: Allocate tiled light indices buffer (all light indices for all tiles)
         _tiledLightIndicesBuffer = bufferManager.AllocateBuffer(
-            MaxTiles * MaxLightsPerTile * 4,  // 4 bytes per index
+            MaxTiles * MaxLightsPerTile * 4, // 4 bytes per index
             BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
             Vma.MemoryUsage.AutoPreferDevice);
         _tiledLightIndicesBufferVk = bufferManager.GetBuffer(_tiledLightIndicesBuffer);
-        
+
         // Register with bindless heap
         if (!bindlessHeap.TryAllocateBufferIndex(out _tiledLightIndicesBufferIndex))
             throw new Exception("Failed to allocate bindless index for tiled light indices buffer");
-        bindlessHeap.UpdateBuffer(_tiledLightIndicesBufferIndex, _tiledLightIndicesBufferVk, MaxTiles * MaxLightsPerTile * 4);
+        bindlessHeap.UpdateBuffer(_tiledLightIndicesBufferIndex, _tiledLightIndicesBufferVk,
+            MaxTiles * MaxLightsPerTile * 4);
 
         Console.WriteLine($"✓ Tiled light culling pass initialized");
         Console.WriteLine($"  Tile size: {TileSize}x{TileSize} pixels");
@@ -115,7 +116,7 @@ public class TiledLightCullingPass : RenderGraphPass
         // Bind descriptor sets (lights buffer via bindless)
         var descriptorSets = stackalloc DescriptorSet[1]
         {
-            ctx.BindlessHeap.BufferSet  // set=0: Light buffer + tiled buffers
+            ctx.BindlessHeap.BufferSet // set=0: Light buffer + tiled buffers
         };
         _vk.CmdBindDescriptorSets(cmd, PipelineBindPoint.Compute,
             _computePipeline.PipelineLayout, 0, 1, descriptorSets, 0, null);
@@ -134,12 +135,12 @@ public class TiledLightCullingPass : RenderGraphPass
 
         _vk.CmdPushConstants(cmd, _computePipeline.PipelineLayout,
             ShaderStageFlags.ComputeBit, 0, 28, pushConstants);
-        
+
 
         // Dispatch compute shader
         // Each workgroup = 16x16 threads, one per tile
-        uint tilesX = (ctx.Width + TileSize - 1) / TileSize;
-        uint tilesY = (ctx.Height + TileSize - 1) / TileSize;
+        var tilesX = (ctx.Width + TileSize - 1) / TileSize;
+        var tilesY = (ctx.Height + TileSize - 1) / TileSize;
 
         _vk.CmdDispatch(cmd, tilesX, tilesY, 1);
 
@@ -181,18 +182,23 @@ public class TiledLightCullingPass : RenderGraphPass
     public void Dispose()
     {
         _computePipeline?.Dispose();
-        
     }
 
     /// <summary>
     /// Get tiled light header buffer for fragment shader access.
     /// </summary>
-    public Buffer GetTiledLightHeaderBuffer() => _tiledLightHeaderBufferVk;
+    public Buffer GetTiledLightHeaderBuffer()
+    {
+        return _tiledLightHeaderBufferVk;
+    }
 
     /// <summary>
     /// Get tiled light indices buffer for fragment shader access.
     /// </summary>
-    public Buffer GetTiledLightIndicesBuffer() => _tiledLightIndicesBufferVk;
+    public Buffer GetTiledLightIndicesBuffer()
+    {
+        return _tiledLightIndicesBufferVk;
+    }
 
     /// <summary>
     /// Bindless index for tiled light header buffer.
