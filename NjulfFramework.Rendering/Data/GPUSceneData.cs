@@ -73,6 +73,42 @@ public struct GPUMaterial
     public Vector4 BaseColor;
 
     /// <summary>
+    /// Metallic factor (0.0 = dielectric, 1.0 = metal).
+    /// 4 bytes.
+    /// </summary>
+    public float MetallicFactor;
+
+    /// <summary>
+    /// Roughness factor (0.0 = smooth, 1.0 = rough).
+    /// 4 bytes.
+    /// </summary>
+    public float RoughnessFactor;
+
+    /// <summary>
+    /// Normal map scale.
+    /// 4 bytes.
+    /// </summary>
+    public float NormalScale;
+
+    /// <summary>
+    /// Occlusion strength.
+    /// 4 bytes.
+    /// </summary>
+    public float OcclusionStrength;
+
+    /// <summary>
+    /// Emissive color (RGB).
+    /// 12 bytes.
+    /// </summary>
+    public Vector3 EmissiveFactor;
+
+    /// <summary>
+    /// Padding to align to 16-byte boundary.
+    /// 4 bytes.
+    /// </summary>
+    public uint Padding1;
+
+    /// <summary>
     /// Index into the texture bindless array for base color.
     /// Set to uint.MaxValue to disable.
     /// </summary>
@@ -91,18 +127,41 @@ public struct GPUMaterial
     public uint MetallicRoughnessTextureIndex;
 
     /// <summary>
+    /// Index into the texture bindless array for occlusion.
+    /// Set to uint.MaxValue to disable.
+    /// </summary>
+    public uint OcclusionTextureIndex;
+
+    /// <summary>
+    /// Index into the texture bindless array for emissive.
+    /// Set to uint.MaxValue to disable.
+    /// </summary>
+    public uint EmissiveTextureIndex;
+
+    /// <summary>
     /// Padding to align to 16-byte boundary.
     /// </summary>
-    public uint Padding;
+    public uint Padding2;
 
-    public GPUMaterial(Vector4 baseColor, uint baseColorTextureIndex = uint.MaxValue,
-        uint normalTextureIndex = uint.MaxValue, uint metallicRoughnessTextureIndex = uint.MaxValue)
+    public GPUMaterial(Vector4 baseColor, float metallicFactor = 1.0f, float roughnessFactor = 1.0f,
+        float normalScale = 1.0f, float occlusionStrength = 1.0f, Vector3 emissiveFactor = default,
+        uint baseColorTextureIndex = uint.MaxValue, uint normalTextureIndex = uint.MaxValue,
+        uint metallicRoughnessTextureIndex = uint.MaxValue, uint occlusionTextureIndex = uint.MaxValue,
+        uint emissiveTextureIndex = uint.MaxValue)
     {
         BaseColor = baseColor;
+        MetallicFactor = metallicFactor;
+        RoughnessFactor = roughnessFactor;
+        NormalScale = normalScale;
+        OcclusionStrength = occlusionStrength;
+        EmissiveFactor = emissiveFactor;
         BaseColorTextureIndex = baseColorTextureIndex;
         NormalTextureIndex = normalTextureIndex;
         MetallicRoughnessTextureIndex = metallicRoughnessTextureIndex;
-        Padding = 0;
+        OcclusionTextureIndex = occlusionTextureIndex;
+        EmissiveTextureIndex = emissiveTextureIndex;
+        Padding1 = 0;
+        Padding2 = 0;
     }
 
     /// <summary>
@@ -291,6 +350,12 @@ public class GPUSceneFrame
         if (materialSize % 16 != 0)
             throw new InvalidOperationException(
                 $"GPUMaterial size ({materialSize}) must be multiple of 16 bytes");
+        
+        // Expected size: 16 (BaseColor) + 16 (floats + padding) + 12 (EmissiveFactor + padding) + 20 (texture indices) + 4 (padding) = 80 bytes
+        const uint expectedMaterialSize = 80;
+        if (materialSize != expectedMaterialSize)
+            throw new InvalidOperationException(
+                $"GPUMaterial size ({materialSize}) does not match expected size ({expectedMaterialSize}) - shader compatibility issue");
 
         if (meshDataSize % 16 != 0)
             throw new InvalidOperationException(

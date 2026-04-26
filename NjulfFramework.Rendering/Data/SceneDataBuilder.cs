@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using NjulfFramework.Rendering.Memory;
 using NjulfFramework.Rendering.Resources;
 using Silk.NET.Vulkan;
+using NjulfFramework.Rendering.Resources.Descriptors;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace NjulfFramework.Rendering.Data;
@@ -21,6 +22,8 @@ public class SceneDataBuilder : IDisposable
     private readonly List<GPUMeshData> _meshData = new();
     private MeshManager? _meshManager;
     private TextureManager? _textureManager;
+    private BindlessDescriptorHeap? _bindlessHeap;
+    private Sampler _defaultSampler;
 
     // Cache to avoid duplicate materials/meshes
     private readonly Dictionary<RenderingData.Material, uint> _materialIndexMap = new();
@@ -113,6 +116,9 @@ public class SceneDataBuilder : IDisposable
     /// <summary>
     /// Get or add a texture index for a texture path
     /// </summary>
+    /// <summary>
+    /// Get or add a texture index for a texture path
+    /// </summary>
     private uint GetOrAddTextureIndex(string texturePath)
     {
         if (string.IsNullOrEmpty(texturePath))
@@ -121,10 +127,48 @@ public class SceneDataBuilder : IDisposable
         if (_texturePathToIndexMap.TryGetValue(texturePath, out var idx))
             return idx;
 
-        // TODO: Load texture and get index from texture manager
-        // For now, return uint.MaxValue (no texture)
-        return uint.MaxValue;
-    }
+        // Load texture using texture manager
+        if (_textureManager != null && _bindlessHeap != null)
+        {
+            try
+            {
+                // Load texture data from file
+                var (pixels, width, height, components) = TextureLoader.LoadTextureFromFile(texturePath);
+
+                // Determine format (use sRGB for base color textures, linear for others)
+                var format = TextureLoader.GetVulkanFormat(components,
+                    texturePath.EndsWith("baseColor", StringComparison.OrdinalIgnoreCase) ||
+                    texturePath.EndsWith("albedo", StringComparison.OrdinalIgnoreCase) ||
+                    texturePath.EndsWith("diffuse", StringComparison.OrdinalIgnoreCase));
+
+                // Allocate texture in texture manager
+                var textureHandle = _textureManager.AllocateTextureWithData(
+                    (uint)width,
+                    (uint)height,
+                    format,
+                    ImageUsageFlags.SampledBit,
+                    pixels);
+
+                // Get bindless texture index
+                if (_bindlessHeap.TryAllocateTextureIndex(out var textureIndex))
+                {
+                    // Update the bindless descriptor heap with the new texture
+                    var imageView = _textureManager.GetImageView(textureHandle);
+                    _bindlessHeap.UpdateTexture(textureIndex, imageView, _defaultSampler);
+
+                    _texturePathToIndexMap[texturePath] = textureIndex;
+                    return textureIndex;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Failed to load texture: " + texturePath + ": " + ex.Message);
+            }
+        } 
+ 
+       // Fallback: return uint.MaxValue (no texture) 
+       return uint.MaxValue; 
+   }
 
     /// <summary>
     /// Add or retrieve a mesh's GPU index.
@@ -247,6 +291,16 @@ public class SceneDataBuilder : IDisposable
 
     public IReadOnlyList<GPUMaterial> MaterialData => _materialData.AsReadOnly();
     public IReadOnlyList<GPUMeshData> MeshData => _meshData.AsReadOnly();
+
+    public void SetBindlessHeap(BindlessDescriptorHeap? bindlessHeap)
+    {
+        _bindlessHeap = bindlessHeap;
+    }
+
+    public void SetDefaultSampler(Sampler sampler)
+    {
+        _defaultSampler = sampler;
+    }
 
     public void Dispose()
     {
