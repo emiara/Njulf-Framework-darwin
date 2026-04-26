@@ -1,5 +1,6 @@
 ﻿using NjulfFramework.Rendering;
 using Silk.NET.Windowing;
+using System.Numerics;
 
 
 namespace NjulfFramework;

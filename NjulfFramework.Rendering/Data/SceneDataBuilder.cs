@@ -164,10 +164,11 @@ public class SceneDataBuilder : IDisposable
             {
                 Console.WriteLine("Failed to load texture: " + texturePath + ": " + ex.Message);
             }
+            
         } 
  
-       // Fallback: return uint.MaxValue (no texture) 
-       return uint.MaxValue; 
+        // Fallback: return uint.MaxValue (no texture) 
+        return uint.MaxValue; 
    }
 
     /// <summary>
