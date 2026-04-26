@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Collections.Concurrent;
 using NjulfFramework.Assets.Models;
 
 namespace NjulfFramework.Assets;
 
 /// <summary>
-/// Asset cache for performance optimization
+///     Asset cache for performance optimization
 /// </summary>
 public class AssetCache
 {
@@ -15,14 +14,14 @@ public class AssetCache
     private readonly ConcurrentDictionary<string, int> _referenceCounts = new();
 
     /// <summary>
-    /// Constructor
+    ///     Constructor
     /// </summary>
     public AssetCache()
     {
     }
 
     /// <summary>
-    /// Cache an asset
+    ///     Cache an asset
     /// </summary>
     public void CacheAsset(string filePath, FrameworkModel model)
     {
@@ -37,7 +36,7 @@ public class AssetCache
     }
 
     /// <summary>
-    /// Get a cached asset
+    ///     Get a cached asset
     /// </summary>
     public FrameworkModel GetCachedModel(string filePath)
     {
@@ -54,7 +53,7 @@ public class AssetCache
     }
 
     /// <summary>
-    /// Release an asset (decrement reference count)
+    ///     Release an asset (decrement reference count)
     /// </summary>
     public void ReleaseAsset(string filePath)
     {
@@ -76,7 +75,7 @@ public class AssetCache
     }
 
     /// <summary>
-    /// Clear the cache
+    ///     Clear the cache
     /// </summary>
     public void Clear()
     {
@@ -85,7 +84,7 @@ public class AssetCache
     }
 
     /// <summary>
-    /// Get cache statistics
+    ///     Get cache statistics
     /// </summary>
     public (int CachedAssets, int TotalReferences) GetCacheStats()
     {

@@ -1,42 +1,43 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
 namespace NjulfFramework.Rendering.Data;
 
 /// <summary>
-/// GPU-side data for a single renderable object.
-/// This is uploaded to a storage buffer and indexed by shaders.
-/// Highly optimized for GPU access patterns.
+///     GPU-side data for a single renderable object.
+///     This is uploaded to a storage buffer and indexed by shaders.
+///     Highly optimized for GPU access patterns.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 16)]
 public struct GPUObjectData
 {
     /// <summary>
-    /// Model-to-world transformation matrix.
-    /// 64 bytes.
+    ///     Model-to-world transformation matrix.
+    ///     64 bytes.
     /// </summary>
     public Matrix4x4 Transform;
 
     /// <summary>
-    /// Index into the material array in the GPU bindless heap.
+    ///     Index into the material array in the GPU bindless heap.
     /// </summary>
     public uint MaterialIndex;
 
     /// <summary>
-    /// Index into the mesh data array (contains vertex/index buffer info).
+    ///     Index into the mesh data array (contains vertex/index buffer info).
     /// </summary>
     public uint MeshIndex;
 
     /// <summary>
-    /// Unique instance identifier for this object.
-    /// Used for hit shader identification in ray tracing.
+    ///     Unique instance identifier for this object.
+    ///     Used for hit shader identification in ray tracing.
     /// </summary>
     public uint InstanceIndex;
 
     /// <summary>
-    /// Padding to align to 16-byte boundary (required for std430 layout in GLSL).
+    ///     Padding to align to 16-byte boundary (required for std430 layout in GLSL).
     /// </summary>
     public uint Padding;
 
@@ -50,8 +51,8 @@ public struct GPUObjectData
     }
 
     /// <summary>
-    /// Get the size of this struct in bytes.
-    /// Must be verified to match shader layout.
+    ///     Get the size of this struct in bytes.
+    ///     Must be verified to match shader layout.
     /// </summary>
     public static uint GetSizeInBytes()
     {
@@ -60,86 +61,86 @@ public struct GPUObjectData
 }
 
 /// <summary>
-/// GPU-side material data.
-/// Contains color and texture indices for bindless access.
+///     GPU-side material data.
+///     Contains color and texture indices for bindless access.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 16)]
 public struct GPUMaterial
 {
     /// <summary>
-    /// Base color (sRGB).
-    /// 16 bytes.
+    ///     Base color (sRGB).
+    ///     16 bytes.
     /// </summary>
     public Vector4 BaseColor;
 
     /// <summary>
-    /// Metallic factor (0.0 = dielectric, 1.0 = metal).
-    /// 4 bytes.
+    ///     Metallic factor (0.0 = dielectric, 1.0 = metal).
+    ///     4 bytes.
     /// </summary>
     public float MetallicFactor;
 
     /// <summary>
-    /// Roughness factor (0.0 = smooth, 1.0 = rough).
-    /// 4 bytes.
+    ///     Roughness factor (0.0 = smooth, 1.0 = rough).
+    ///     4 bytes.
     /// </summary>
     public float RoughnessFactor;
 
     /// <summary>
-    /// Normal map scale.
-    /// 4 bytes.
+    ///     Normal map scale.
+    ///     4 bytes.
     /// </summary>
     public float NormalScale;
 
     /// <summary>
-    /// Occlusion strength.
-    /// 4 bytes.
+    ///     Occlusion strength.
+    ///     4 bytes.
     /// </summary>
     public float OcclusionStrength;
 
     /// <summary>
-    /// Emissive color (RGB).
-    /// 12 bytes.
+    ///     Emissive color (RGB).
+    ///     12 bytes.
     /// </summary>
     public Vector3 EmissiveFactor;
 
     /// <summary>
-    /// Padding to align to 16-byte boundary.
-    /// 4 bytes.
+    ///     Padding to align to 16-byte boundary.
+    ///     4 bytes.
     /// </summary>
     public uint Padding1;
 
     /// <summary>
-    /// Index into the texture bindless array for base color.
-    /// Set to uint.MaxValue to disable.
+    ///     Index into the texture bindless array for base color.
+    ///     Set to uint.MaxValue to disable.
     /// </summary>
     public uint BaseColorTextureIndex;
 
     /// <summary>
-    /// Index into the texture bindless array for normal map.
-    /// Set to uint.MaxValue to disable.
+    ///     Index into the texture bindless array for normal map.
+    ///     Set to uint.MaxValue to disable.
     /// </summary>
     public uint NormalTextureIndex;
 
     /// <summary>
-    /// Index into the texture bindless array for metallic/roughness.
-    /// Set to uint.MaxValue to disable.
+    ///     Index into the texture bindless array for metallic/roughness.
+    ///     Set to uint.MaxValue to disable.
     /// </summary>
     public uint MetallicRoughnessTextureIndex;
 
     /// <summary>
-    /// Index into the texture bindless array for occlusion.
-    /// Set to uint.MaxValue to disable.
+    ///     Index into the texture bindless array for occlusion.
+    ///     Set to uint.MaxValue to disable.
     /// </summary>
     public uint OcclusionTextureIndex;
 
     /// <summary>
-    /// Index into the texture bindless array for emissive.
-    /// Set to uint.MaxValue to disable.
+    ///     Index into the texture bindless array for emissive.
+    ///     Set to uint.MaxValue to disable.
     /// </summary>
     public uint EmissiveTextureIndex;
 
     /// <summary>
-    /// Padding to align to 16-byte boundary.
+    ///     Padding to align to 16-byte boundary.
     /// </summary>
     public uint Padding2;
 
@@ -165,7 +166,7 @@ public struct GPUMaterial
     }
 
     /// <summary>
-    /// Get the size of this struct in bytes.
+    ///     Get the size of this struct in bytes.
     /// </summary>
     public static uint GetSizeInBytes()
     {
@@ -174,66 +175,66 @@ public struct GPUMaterial
 }
 
 /// <summary>
-/// GPU-side mesh data.
-/// Contains references to GPU buffers and draw parameters.
+///     GPU-side mesh data.
+///     Contains references to GPU buffers and draw parameters.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 16)]
 public struct GPUMeshData
 {
     /// <summary>
-    /// Index into the buffer bindless array for vertex data.
+    ///     Index into the buffer bindless array for vertex data.
     /// </summary>
     public uint VertexBufferIndex;
 
     /// <summary>
-    /// Index into the buffer bindless array for index data.
+    ///     Index into the buffer bindless array for index data.
     /// </summary>
     public uint IndexBufferIndex;
 
     /// <summary>
-    /// Number of vertices in this mesh.
+    ///     Number of vertices in this mesh.
     /// </summary>
     public uint VertexCount;
 
     /// <summary>
-    /// Number of indices in this mesh.
+    ///     Number of indices in this mesh.
     /// </summary>
     public uint IndexCount;
 
     /// <summary>
-    /// Minimum corner of bounding box (for frustum culling / ray tracing).
-    /// 12 bytes.
+    ///     Minimum corner of bounding box (for frustum culling / ray tracing).
+    ///     12 bytes.
     /// </summary>
     public Vector3 BoundingBoxMin;
 
     /// <summary>
-    /// Padding to align Vector3 to 16 bytes.
+    ///     Padding to align Vector3 to 16 bytes.
     /// </summary>
     public uint Padding1;
 
     /// <summary>
-    /// Maximum corner of bounding box.
-    /// 12 bytes.
+    ///     Maximum corner of bounding box.
+    ///     12 bytes.
     /// </summary>
     public Vector3 BoundingBoxMax;
 
     /// <summary>
-    /// Padding to align to 16-byte boundary.
+    ///     Padding to align to 16-byte boundary.
     /// </summary>
     public uint Padding2;
 
     /// <summary>
-    /// Offset into meshlet buffer.
+    ///     Offset into meshlet buffer.
     /// </summary>
     public uint MeshletOffset;
 
     /// <summary>
-    /// Meshlet count for this mesh.
+    ///     Meshlet count for this mesh.
     /// </summary>
     public uint MeshletCount;
 
     /// <summary>
-    /// Padding to align to 16-byte boundary.
+    ///     Padding to align to 16-byte boundary.
     /// </summary>
     public uint Padding3;
 
@@ -258,7 +259,7 @@ public struct GPUMeshData
     }
 
     /// <summary>
-    /// Get the size of this struct in bytes.
+    ///     Get the size of this struct in bytes.
     /// </summary>
     public static uint GetSizeInBytes()
     {
@@ -266,7 +267,7 @@ public struct GPUMeshData
     }
 
     /// <summary>
-    /// Calculate bounding box from vertices.
+    ///     Calculate bounding box from vertices.
     /// </summary>
     public static (Vector3 min, Vector3 max) CalculateBoundingBox(RenderingData.Vertex[] vertices)
     {
@@ -287,31 +288,31 @@ public struct GPUMeshData
 }
 
 /// <summary>
-/// Container for all per-frame GPU scene data.
-/// Represents the current frame's state on the GPU.
+///     Container for all per-frame GPU scene data.
+///     Represents the current frame's state on the GPU.
 /// </summary>
 public class GPUSceneFrame
 {
     /// <summary>
-    /// Array of object data to upload to GPU.
-    /// Index corresponds to instance ID in ray tracing.
+    ///     Array of object data to upload to GPU.
+    ///     Index corresponds to instance ID in ray tracing.
     /// </summary>
     public List<GPUObjectData> ObjectData { get; } = new();
 
     /// <summary>
-    /// Array of material data to upload to GPU.
-    /// Referenced by MaterialIndex in GPUObjectData.
+    ///     Array of material data to upload to GPU.
+    ///     Referenced by MaterialIndex in GPUObjectData.
     /// </summary>
     public List<GPUMaterial> MaterialData { get; } = new();
 
     /// <summary>
-    /// Array of mesh data to upload to GPU.
-    /// Referenced by MeshIndex in GPUObjectData.
+    ///     Array of mesh data to upload to GPU.
+    ///     Referenced by MeshIndex in GPUObjectData.
     /// </summary>
     public List<GPUMeshData> MeshData { get; } = new();
 
     /// <summary>
-    /// Clear all frame data (called at beginning of each frame).
+    ///     Clear all frame data (called at beginning of each frame).
     /// </summary>
     public void Clear()
     {
@@ -321,7 +322,7 @@ public class GPUSceneFrame
     }
 
     /// <summary>
-    /// Get the total upload size in bytes for this frame.
+    ///     Get the total upload size in bytes for this frame.
     /// </summary>
     public ulong GetTotalUploadSizeInBytes()
     {
@@ -333,8 +334,8 @@ public class GPUSceneFrame
     }
 
     /// <summary>
-    /// Verify all structures are POD-safe and correctly sized.
-    /// Call this during initialization to catch errors early.
+    ///     Verify all structures are POD-safe and correctly sized.
+    ///     Call this during initialization to catch errors early.
     /// </summary>
     public static void ValidateStructureSizes()
     {
@@ -350,7 +351,7 @@ public class GPUSceneFrame
         if (materialSize % 16 != 0)
             throw new InvalidOperationException(
                 $"GPUMaterial size ({materialSize}) must be multiple of 16 bytes");
-        
+
         // Expected size: 16 (BaseColor) + 16 (floats + padding) + 12 (EmissiveFactor + padding) + 20 (texture indices) + 4 (padding) = 80 bytes
         const uint expectedMaterialSize = 80;
         if (materialSize != expectedMaterialSize)
@@ -361,8 +362,8 @@ public class GPUSceneFrame
             throw new InvalidOperationException(
                 $"GPUMeshData size ({meshDataSize}) must be multiple of 16 bytes");
 
-        System.Diagnostics.Debug.WriteLine($"✓ GPUObjectData size: {objectDataSize} bytes");
-        System.Diagnostics.Debug.WriteLine($"✓ GPUMaterial size: {materialSize} bytes");
-        System.Diagnostics.Debug.WriteLine($"✓ GPUMeshData size: {meshDataSize} bytes");
+        Debug.WriteLine($"✓ GPUObjectData size: {objectDataSize} bytes");
+        Debug.WriteLine($"✓ GPUMaterial size: {materialSize} bytes");
+        Debug.WriteLine($"✓ GPUMeshData size: {meshDataSize} bytes");
     }
 }

@@ -8,8 +8,18 @@ namespace NjulfFramework.Rendering.Data;
 public class RenderingData
 {
     /// <summary>
-    /// Represents a 3D vertex with position, normal, and UV coordinates.
-    /// Must match vertex shader layout exactly.
+    ///     Alpha mode for material transparency.
+    /// </summary>
+    public enum AlphaMode
+    {
+        Opaque, // Fully opaque
+        Mask, // Binary transparency with cutoff
+        Blend // Alpha blending
+    }
+
+    /// <summary>
+    ///     Represents a 3D vertex with position, normal, and UV coordinates.
+    ///     Must match vertex shader layout exactly.
     /// </summary>
     public struct Vertex
     {
@@ -36,8 +46,8 @@ public class RenderingData
     }
 
     /// <summary>
-    /// Uniform buffer data for transformations.
-    /// Sent to GPU once per object per frame.
+    ///     Uniform buffer data for transformations.
+    ///     Sent to GPU once per object per frame.
     /// </summary>
     public struct UniformBufferObject
     {
@@ -59,21 +69,18 @@ public class RenderingData
     }
 
     /// <summary>
-    /// Alpha mode for material transparency.
-    /// </summary>
-    public enum AlphaMode
-    {
-        Opaque, // Fully opaque
-        Mask, // Binary transparency with cutoff
-        Blend // Alpha blending
-    }
-
-    /// <summary>
-    /// Material properties for rendering.
-    /// Supports full GLTF 2.0 PBR Metallic-Roughness workflow.
+    ///     Material properties for rendering.
+    ///     Supports full GLTF 2.0 PBR Metallic-Roughness workflow.
     /// </summary>
     public class Material : IDisposable
     {
+        public Material(string name, string shaderPath, string baseColorTexturePath = "")
+        {
+            Name = name;
+            ShaderPath = shaderPath;
+            BaseColorTexturePath = baseColorTexturePath;
+        }
+
         public string Name { get; set; }
         public string ShaderPath { get; set; }
 
@@ -122,13 +129,6 @@ public class RenderingData
             set => BaseColorFactor = value;
         }
 
-        public Material(string name, string shaderPath, string baseColorTexturePath = "")
-        {
-            Name = name;
-            ShaderPath = shaderPath;
-            BaseColorTexturePath = baseColorTexturePath;
-        }
-
         public void Dispose()
         {
             // Cleanup will be handled by texture manager
@@ -136,18 +136,11 @@ public class RenderingData
     }
 
     /// <summary>
-    /// Mesh data - vertices and indices.
-    /// Immutable after creation.
+    ///     Mesh data - vertices and indices.
+    ///     Immutable after creation.
     /// </summary>
     public class Mesh
     {
-        public string Name { get; set; }
-        public Vertex[] Vertices { get; private set; }
-        public uint[] Indices { get; private set; }
-
-        public Vector3 BoundingBoxMin { get; set; }
-        public Vector3 BoundingBoxMax { get; set; }
-
         public Mesh(string name, Vertex[] vertices, uint[] indices, Vector3 boundingBoxMin, Vector3 boundingBoxMax)
         {
             Name = name;
@@ -157,8 +150,15 @@ public class RenderingData
             BoundingBoxMax = boundingBoxMax;
         }
 
+        public string Name { get; set; }
+        public Vertex[] Vertices { get; private set; }
+        public uint[] Indices { get; private set; }
+
+        public Vector3 BoundingBoxMin { get; set; }
+        public Vector3 BoundingBoxMax { get; set; }
+
         /// <summary>
-        /// Create a simple cube mesh for testing.
+        ///     Create a simple cube mesh for testing.
         /// </summary>
         public static Mesh CreateCube()
         {
@@ -222,16 +222,10 @@ public class RenderingData
     }
 
     /// <summary>
-    /// Renderable object combining mesh, material, and transform.
+    ///     Renderable object combining mesh, material, and transform.
     /// </summary>
     public class RenderObject
     {
-        public string Name { get; set; }
-        public Mesh Mesh { get; set; }
-        public Material Material { get; set; }
-        public Matrix4x4 Transform { get; set; }
-        public bool Visible { get; set; } = true;
-
         public RenderObject(string name, Mesh mesh, Material material, Matrix4x4 transform = default)
         {
             Name = name;
@@ -239,6 +233,12 @@ public class RenderingData
             Material = material;
             Transform = transform == default ? Matrix4x4.Identity : transform;
         }
+
+        public string Name { get; set; }
+        public Mesh Mesh { get; set; }
+        public Material Material { get; set; }
+        public Matrix4x4 Transform { get; set; }
+        public bool Visible { get; set; } = true;
     }
 
     [StructLayout(LayoutKind.Sequential)]

@@ -6,11 +6,8 @@ namespace NjulfFramework.Rendering.Resources;
 
 public class FramebufferManager : IDisposable
 {
-    private readonly Vk _vk;
     private readonly Device _device;
-    private Framebuffer[] _framebuffers = null!;
-
-    public Framebuffer[] Framebuffers => _framebuffers;
+    private readonly Vk _vk;
 
     public FramebufferManager(
         Vk vk,
@@ -25,9 +22,18 @@ public class FramebufferManager : IDisposable
         CreateFramebuffers(renderPass, imageViews, extent);
     }
 
+    public Framebuffer[] Framebuffers { get; private set; } = null!;
+
+    public unsafe void Dispose()
+    {
+        foreach (var framebuffer in Framebuffers)
+            if (framebuffer.Handle != 0)
+                _vk.DestroyFramebuffer(_device, framebuffer, null);
+    }
+
     private unsafe void CreateFramebuffers(RenderPass renderPass, ImageView[] imageViews, Extent2D extent)
     {
-        _framebuffers = new Framebuffer[imageViews.Length];
+        Framebuffers = new Framebuffer[imageViews.Length];
 
         for (var i = 0; i < imageViews.Length; i++)
         {
@@ -44,15 +50,8 @@ public class FramebufferManager : IDisposable
                 Layers = 1
             };
 
-            if (_vk.CreateFramebuffer(_device, &framebufferInfo, null, out _framebuffers[i]) != Result.Success)
+            if (_vk.CreateFramebuffer(_device, &framebufferInfo, null, out Framebuffers[i]) != Result.Success)
                 throw new Exception($"Failed to create framebuffer {i}");
         }
-    }
-
-    public unsafe void Dispose()
-    {
-        foreach (var framebuffer in _framebuffers)
-            if (framebuffer.Handle != 0)
-                _vk.DestroyFramebuffer(_device, framebuffer, null);
     }
 }

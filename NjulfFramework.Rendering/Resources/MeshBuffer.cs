@@ -1,24 +1,22 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
+using System.Numerics;
 using System.Runtime.InteropServices;
-using Silk.NET.Vulkan;
-using NjulfFramework.Rendering.Data;
 using NjulfFramework.Rendering.Memory;
+using NjulfFramework.Rendering.RenderingData;
 using NjulfFramework.Rendering.Resources.Handles;
+using Silk.NET.Vulkan;
 using Vma;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace NjulfFramework.Rendering.Resources;
 
 /// <summary>
-/// GPU-driven mesh buffer system.
-/// Consolidates all mesh vertex/index data into two large buffers (vertex + index).
-/// Mesh offsets stored in CPU-side registry for efficient bindless access.
-/// 
-/// This replaces per-mesh vertex/index buffer creation.
-/// Shaders access meshes via GPUMeshData structs with offset lookups.
+///     GPU-driven mesh buffer system.
+///     Consolidates all mesh vertex/index data into two large buffers (vertex + index).
+///     Mesh offsets stored in CPU-side registry for efficient bindless access.
+///     This replaces per-mesh vertex/index buffer creation.
+///     Shaders access meshes via GPUMeshData structs with offset lookups.
 /// </summary>
 public class MeshBuffer : IDisposable
 {
@@ -26,43 +24,21 @@ public class MeshBuffer : IDisposable
     private const uint MaxVertsPerMeshlet = 128;
 
     private readonly BufferManager _bufferManager;
-    private readonly Vk _vk;
     private readonly Device _device;
 
-    // GPU-side consolidated buffers
-    private BufferHandle _vertexBufferHandle;
-    private BufferHandle _indexBufferHandle;
-    private Buffer _vertexBuffer;
-    private Buffer _indexBuffer;
-
-    private BufferHandle _meshletBufferHandle;
-    private BufferHandle _meshletVertexIndicesBufferHandle;
-    private BufferHandle _meshletTriangleIndicesBufferHandle;
-    private Buffer _meshletBuffer;
-    private Buffer _meshletVertexIndicesBuffer;
-    private Buffer _meshletTriangleIndicesBuffer;
+    private readonly Dictionary<Data.RenderingData.Mesh, MeshEntry> _meshes = new();
 
     private readonly List<GPUMeshlet> _meshlets = new();
-    private readonly List<uint> _meshletVertexIndices = new();
     private readonly List<uint> _meshletTriangleIndices = new();
-    private bool _meshletDataUploaded = false;
+    private readonly List<uint> _meshletVertexIndices = new();
+    private readonly Vk _vk;
+    private bool _finalized;
+    private Buffer _indexBuffer;
 
-    // CPU-side mesh registry
-    public class MeshEntry
-    {
-        public uint VertexOffset { get; set; } // Offset in vertex buffer (in vertices)
-        public uint IndexOffset { get; set; } // Offset in index buffer (in indices)
-        public uint VertexCount { get; set; }
-        public uint IndexCount { get; set; }
-        public uint MeshletOffset { get; set; }
-        public uint MeshletCount { get; set; }
-        public float BoundsRadius { get; set; }
-    }
+    private bool _meshletDataUploaded;
+    private Buffer _vertexBuffer;
 
-    private readonly Dictionary<Data.RenderingData.Mesh, MeshEntry> _meshes = new();
-    private uint _totalVertices = 0;
-    private uint _totalIndices = 0;
-    private bool _finalized = false;
+    // GPU-side consolidated buffers
 
     public MeshBuffer(BufferManager bufferManager, Vk vk, Device device)
     {
@@ -72,8 +48,64 @@ public class MeshBuffer : IDisposable
     }
 
     /// <summary>
-    /// Add a mesh to the consolidated buffer (pre-finalization).
-    /// Called during initialization; tracks offsets but doesn't upload yet.
+    ///     Get vertex buffer handle (for bindless registration).
+    /// </summary>
+    public BufferHandle VertexBufferHandle { get; private set; }
+
+    /// <summary>
+    ///     Get index buffer handle (for bindless registration).
+    /// </summary>
+    public BufferHandle IndexBufferHandle { get; private set; }
+
+    /// <summary>
+    ///     Get actual vertex buffer.
+    /// </summary>
+    public Buffer VertexBuffer => _vertexBuffer;
+
+    /// <summary>
+    ///     Get actual index buffer.
+    /// </summary>
+    public Buffer IndexBuffer => _indexBuffer;
+
+    public Buffer MeshletBuffer { get; private set; }
+
+    public Buffer MeshletVertexIndicesBuffer { get; private set; }
+
+    public Buffer MeshletTriangleIndicesBuffer { get; private set; }
+
+    public BufferHandle MeshletBufferHandle { get; private set; }
+
+    public BufferHandle MeshletVertexIndicesBufferHandle { get; private set; }
+
+    public BufferHandle MeshletTriangleIndicesBufferHandle { get; private set; }
+
+    /// <summary>
+    ///     Total vertex count across all meshes.
+    /// </summary>
+    public uint TotalVertices { get; private set; }
+
+    /// <summary>
+    ///     Total index count across all meshes.
+    /// </summary>
+    public uint TotalIndices { get; private set; }
+
+    /// <summary>
+    ///     Mesh count.
+    /// </summary>
+    public int MeshCount => _meshes.Count;
+
+    public void Dispose()
+    {
+        _meshes.Clear();
+        _meshlets.Clear();
+        _meshletVertexIndices.Clear();
+        _meshletTriangleIndices.Clear();
+        // BufferManager handles actual VMA deallocation
+    }
+
+    /// <summary>
+    ///     Add a mesh to the consolidated buffer (pre-finalization).
+    ///     Called during initialization; tracks offsets but doesn't upload yet.
     /// </summary>
     public void AddMesh(Data.RenderingData.Mesh mesh)
     {
@@ -88,23 +120,23 @@ public class MeshBuffer : IDisposable
 
         var entry = new MeshEntry
         {
-            VertexOffset = _totalVertices,
-            IndexOffset = _totalIndices,
+            VertexOffset = TotalVertices,
+            IndexOffset = TotalIndices,
             VertexCount = (uint)(mesh.Vertices?.Length ?? 0),
             IndexCount = (uint)(mesh.Indices?.Length ?? 0),
             BoundsRadius = ComputeBoundsRadius(mesh)
         };
 
         _meshes[mesh] = entry;
-        _totalVertices += entry.VertexCount;
-        _totalIndices += entry.IndexCount;
+        TotalVertices += entry.VertexCount;
+        TotalIndices += entry.IndexCount;
 
         Console.WriteLine($"Added mesh '{mesh.Name}': {entry.VertexCount} vertices, {entry.IndexCount} indices");
     }
 
     /// <summary>
-    /// Finalize the mesh buffer: allocate GPU memory and prepare for uploads.
-    /// Called once after all meshes are registered.
+    ///     Finalize the mesh buffer: allocate GPU memory and prepare for uploads.
+    ///     Called once after all meshes are registered.
     /// </summary>
     public void Finalize()
     {
@@ -114,71 +146,71 @@ public class MeshBuffer : IDisposable
         if (_meshes.Count == 0)
             throw new InvalidOperationException("No meshes registered");
 
-        Console.WriteLine($"Finalizing MeshBuffer: {_totalVertices} total vertices, {_totalIndices} total indices");
+        Console.WriteLine($"Finalizing MeshBuffer: {TotalVertices} total vertices, {TotalIndices} total indices");
 
         BuildMeshlets();
 
         // Allocate vertex buffer
-        if (_totalVertices > 0)
+        if (TotalVertices > 0)
         {
-            var vertexSize = _totalVertices * Marshal.SizeOf<Data.RenderingData.Vertex>();
+            var vertexSize = TotalVertices * Marshal.SizeOf<Data.RenderingData.Vertex>();
 
-            _vertexBufferHandle = _bufferManager.AllocateBuffer(
+            VertexBufferHandle = _bufferManager.AllocateBuffer(
                 (ulong)vertexSize,
                 BufferUsageFlags.VertexBufferBit
                 | BufferUsageFlags.StorageBufferBit // For bindless access
                 | BufferUsageFlags.TransferDstBit, // For uploading
                 MemoryUsage.AutoPreferDevice);
 
-            _vertexBuffer = _bufferManager.GetBuffer(_vertexBufferHandle);
+            _vertexBuffer = _bufferManager.GetBuffer(VertexBufferHandle);
             Console.WriteLine($"✓ Vertex buffer allocated: {vertexSize / (1024 * 1024)} MB");
         }
 
         // Allocate index buffer
-        if (_totalIndices > 0)
+        if (TotalIndices > 0)
         {
-            var indexSize = _totalIndices * sizeof(uint);
+            var indexSize = TotalIndices * sizeof(uint);
 
-            _indexBufferHandle = _bufferManager.AllocateBuffer(
-                (ulong)indexSize,
+            IndexBufferHandle = _bufferManager.AllocateBuffer(
+                indexSize,
                 BufferUsageFlags.IndexBufferBit
                 | BufferUsageFlags.StorageBufferBit // For bindless access
                 | BufferUsageFlags.TransferDstBit, // For uploading
                 MemoryUsage.AutoPreferDevice);
 
-            _indexBuffer = _bufferManager.GetBuffer(_indexBufferHandle);
+            _indexBuffer = _bufferManager.GetBuffer(IndexBufferHandle);
             Console.WriteLine($"✓ Index buffer allocated: {indexSize / (1024 * 1024)} MB");
         }
 
         if (_meshlets.Count > 0)
         {
             var meshletSize = (ulong)(_meshlets.Count * Marshal.SizeOf<GPUMeshlet>());
-            _meshletBufferHandle = _bufferManager.AllocateBuffer(
+            MeshletBufferHandle = _bufferManager.AllocateBuffer(
                 meshletSize,
                 BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
                 MemoryUsage.AutoPreferDevice);
-            _meshletBuffer = _bufferManager.GetBuffer(_meshletBufferHandle);
+            MeshletBuffer = _bufferManager.GetBuffer(MeshletBufferHandle);
 
             var meshletVertexIndexSize = (ulong)(_meshletVertexIndices.Count * sizeof(uint));
-            _meshletVertexIndicesBufferHandle = _bufferManager.AllocateBuffer(
+            MeshletVertexIndicesBufferHandle = _bufferManager.AllocateBuffer(
                 meshletVertexIndexSize,
                 BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
                 MemoryUsage.AutoPreferDevice);
-            _meshletVertexIndicesBuffer = _bufferManager.GetBuffer(_meshletVertexIndicesBufferHandle);
+            MeshletVertexIndicesBuffer = _bufferManager.GetBuffer(MeshletVertexIndicesBufferHandle);
 
             var meshletTriangleIndexSize = (ulong)(_meshletTriangleIndices.Count * sizeof(uint));
-            _meshletTriangleIndicesBufferHandle = _bufferManager.AllocateBuffer(
+            MeshletTriangleIndicesBufferHandle = _bufferManager.AllocateBuffer(
                 meshletTriangleIndexSize,
                 BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
                 MemoryUsage.AutoPreferDevice);
-            _meshletTriangleIndicesBuffer = _bufferManager.GetBuffer(_meshletTriangleIndicesBufferHandle);
+            MeshletTriangleIndicesBuffer = _bufferManager.GetBuffer(MeshletTriangleIndicesBufferHandle);
         }
 
         _finalized = true;
     }
 
     /// <summary>
-    /// Get mesh entry (offset + counts) for a given mesh.
+    ///     Get mesh entry (offset + counts) for a given mesh.
     /// </summary>
     public MeshEntry GetMeshEntry(Data.RenderingData.Mesh mesh)
     {
@@ -188,26 +220,26 @@ public class MeshBuffer : IDisposable
     }
 
     /// <summary>
-    /// Get mesh offsets as GPUMeshData struct (for scene buffer upload).
+    ///     Get mesh offsets as GPUMeshData struct (for scene buffer upload).
     /// </summary>
-    public RenderingData.GPUMeshData GetGPUMeshData(Data.RenderingData.Mesh mesh)
+    public GPUMeshData GetGPUMeshData(Data.RenderingData.Mesh mesh)
     {
         var entry = GetMeshEntry(mesh);
-        return new RenderingData.GPUMeshData
+        return new GPUMeshData
         {
             VertexBufferIndex = 0, // Bindless index (will be set by BindlessDescriptorHeap)
             IndexBufferIndex = 1, // Bindless index
             VertexCount = entry.VertexCount,
             IndexCount = entry.IndexCount,
-            BoundingBoxMin = new System.Numerics.Vector3(-1),
-            BoundingBoxMax = new System.Numerics.Vector3(1),
+            BoundingBoxMin = new Vector3(-1),
+            BoundingBoxMax = new Vector3(1),
             MeshletOffset = entry.MeshletOffset,
             MeshletCount = entry.MeshletCount
         };
     }
 
     /// <summary>
-    /// Bind consolidated vertex and index buffers to command buffer.
+    ///     Bind consolidated vertex and index buffers to command buffer.
     /// </summary>
     public void BindBuffers(CommandBuffer cmd)
     {
@@ -222,9 +254,9 @@ public class MeshBuffer : IDisposable
     }
 
     /// <summary>
-    /// Draw a mesh using consolidated buffers with offset tracking.
+    ///     Draw a mesh using consolidated buffers with offset tracking.
     /// </summary>
-    public unsafe void DrawMesh(CommandBuffer cmd, Data.RenderingData.Mesh mesh)
+    public void DrawMesh(CommandBuffer cmd, Data.RenderingData.Mesh mesh)
     {
         if (!_finalized)
             throw new InvalidOperationException("MeshBuffer not finalized (Draw)");
@@ -236,8 +268,8 @@ public class MeshBuffer : IDisposable
     }
 
     /// <summary>
-    /// Upload mesh data from CPU to GPU via staging buffer.
-    /// Typically called once per mesh after finalization.
+    ///     Upload mesh data from CPU to GPU via staging buffer.
+    ///     Typically called once per mesh after finalization.
     /// </summary>
     public void UploadMeshData(Data.RenderingData.Mesh mesh, CommandBuffer transferCmd, FrameUploadRing uploadRing)
     {
@@ -281,7 +313,7 @@ public class MeshBuffer : IDisposable
     }
 
     /// <summary>
-    /// Helper: Record a buffer copy command.
+    ///     Helper: Record a buffer copy command.
     /// </summary>
     private unsafe void RecordCopyCommand(CommandBuffer cmd, Buffer srcBuffer, Buffer dstBuffer,
         ulong srcOffset, ulong dstOffset, ulong size)
@@ -294,71 +326,6 @@ public class MeshBuffer : IDisposable
         };
 
         _vk.CmdCopyBuffer(cmd, srcBuffer, dstBuffer, 1, &region);
-    }
-
-    /// <summary>
-    /// Get vertex buffer handle (for bindless registration).
-    /// </summary>
-    public BufferHandle VertexBufferHandle => _vertexBufferHandle;
-
-    /// <summary>
-    /// Get index buffer handle (for bindless registration).
-    /// </summary>
-    public BufferHandle IndexBufferHandle => _indexBufferHandle;
-
-    /// <summary>
-    /// Get actual vertex buffer.
-    /// </summary>
-    public Buffer VertexBuffer => _vertexBuffer;
-
-    /// <summary>
-    /// Get actual index buffer.
-    /// </summary>
-    public Buffer IndexBuffer => _indexBuffer;
-
-    public Buffer MeshletBuffer => _meshletBuffer;
-    public Buffer MeshletVertexIndicesBuffer => _meshletVertexIndicesBuffer;
-    public Buffer MeshletTriangleIndicesBuffer => _meshletTriangleIndicesBuffer;
-
-    public BufferHandle MeshletBufferHandle => _meshletBufferHandle;
-    public BufferHandle MeshletVertexIndicesBufferHandle => _meshletVertexIndicesBufferHandle;
-    public BufferHandle MeshletTriangleIndicesBufferHandle => _meshletTriangleIndicesBufferHandle;
-
-    /// <summary>
-    /// Total vertex count across all meshes.
-    /// </summary>
-    public uint TotalVertices => _totalVertices;
-
-    /// <summary>
-    /// Total index count across all meshes.
-    /// </summary>
-    public uint TotalIndices => _totalIndices;
-
-    /// <summary>
-    /// Mesh count.
-    /// </summary>
-    public int MeshCount => _meshes.Count;
-
-    public void Dispose()
-    {
-        _meshes.Clear();
-        _meshlets.Clear();
-        _meshletVertexIndices.Clear();
-        _meshletTriangleIndices.Clear();
-        // BufferManager handles actual VMA deallocation
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct GPUMeshlet
-    {
-        public uint VertexOffset;
-        public uint VertexCount;
-        public uint TriangleOffset;
-        public uint TriangleCount;
-        public System.Numerics.Vector4 BoundsMin;
-        public System.Numerics.Vector4 BoundsMax;
-        public System.Numerics.Vector4 ConeAxis;
-        public System.Numerics.Vector4 ConeData;
     }
 
     private void BuildMeshlets()
@@ -385,10 +352,10 @@ public class MeshBuffer : IDisposable
                 var localVerts = new List<uint>();
                 var localTris = new List<uint>();
 
-                var boundsMin = new System.Numerics.Vector3(float.MaxValue);
-                var boundsMax = new System.Numerics.Vector3(float.MinValue);
-                var normalSum = new System.Numerics.Vector3(0);
-                var triNormals = new List<System.Numerics.Vector3>();
+                var boundsMin = new Vector3(float.MaxValue);
+                var boundsMax = new Vector3(float.MinValue);
+                var normalSum = new Vector3(0);
+                var triNormals = new List<Vector3>();
 
                 while (triIndex < triCount && localTris.Count / 3 < MaxPrimsPerMeshlet)
                 {
@@ -415,10 +382,10 @@ public class MeshBuffer : IDisposable
                     var p0 = vertices[i0].Position;
                     var p1 = vertices[i1].Position;
                     var p2 = vertices[i2].Position;
-                    var n = System.Numerics.Vector3.Cross(p1 - p0, p2 - p0);
+                    var n = Vector3.Cross(p1 - p0, p2 - p0);
                     if (n.LengthSquared() > 0.0f)
                     {
-                        n = System.Numerics.Vector3.Normalize(n);
+                        n = Vector3.Normalize(n);
                         triNormals.Add(n);
                         normalSum += n;
                     }
@@ -436,15 +403,15 @@ public class MeshBuffer : IDisposable
                 _meshletTriangleIndices.AddRange(localTris);
 
                 var coneAxis = normalSum.LengthSquared() > 0.0f
-                    ? System.Numerics.Vector3.Normalize(normalSum)
-                    : new System.Numerics.Vector3(0, 0, 1);
+                    ? Vector3.Normalize(normalSum)
+                    : new Vector3(0, 0, 1);
                 var coneCutoff = -1.0f;
                 if (triNormals.Count > 0)
                 {
                     var maxAngle = 0.0f;
                     foreach (var n in triNormals)
                     {
-                        var dot = Math.Clamp(System.Numerics.Vector3.Dot(coneAxis, n), -1.0f, 1.0f);
+                        var dot = Math.Clamp(Vector3.Dot(coneAxis, n), -1.0f, 1.0f);
                         var angle = MathF.Acos(dot);
                         if (angle > maxAngle)
                             maxAngle = angle;
@@ -459,10 +426,10 @@ public class MeshBuffer : IDisposable
                     VertexCount = (uint)localVerts.Count,
                     TriangleOffset = triangleOffset,
                     TriangleCount = (uint)(localTris.Count / 3),
-                    BoundsMin = new System.Numerics.Vector4(boundsMin, 0),
-                    BoundsMax = new System.Numerics.Vector4(boundsMax, 0),
-                    ConeAxis = new System.Numerics.Vector4(coneAxis, 0),
-                    ConeData = new System.Numerics.Vector4(coneCutoff, 0, 0, 0)
+                    BoundsMin = new Vector4(boundsMin, 0),
+                    BoundsMax = new Vector4(boundsMax, 0),
+                    ConeAxis = new Vector4(coneAxis, 0),
+                    ConeData = new Vector4(coneCutoff, 0, 0, 0)
                 });
 
                 meshletCount++;
@@ -491,7 +458,7 @@ public class MeshBuffer : IDisposable
             DstOffset = 0,
             Size = meshletSize
         };
-        _vk.CmdCopyBuffer(transferCmd, srcBuffer, _meshletBuffer, 1, &meshletCopy);
+        _vk.CmdCopyBuffer(transferCmd, srcBuffer, MeshletBuffer, 1, &meshletCopy);
 
         var meshletVertexIndexSize = (ulong)(_meshletVertexIndices.Count * sizeof(uint));
         var meshletVertexIndexCopy = new BufferCopy
@@ -500,7 +467,7 @@ public class MeshBuffer : IDisposable
             DstOffset = 0,
             Size = meshletVertexIndexSize
         };
-        _vk.CmdCopyBuffer(transferCmd, srcBuffer, _meshletVertexIndicesBuffer, 1, &meshletVertexIndexCopy);
+        _vk.CmdCopyBuffer(transferCmd, srcBuffer, MeshletVertexIndicesBuffer, 1, &meshletVertexIndexCopy);
 
         var meshletTriangleIndexSize = (ulong)(_meshletTriangleIndices.Count * sizeof(uint));
         var meshletTriangleIndexCopy = new BufferCopy
@@ -509,7 +476,7 @@ public class MeshBuffer : IDisposable
             DstOffset = 0,
             Size = meshletTriangleIndexSize
         };
-        _vk.CmdCopyBuffer(transferCmd, srcBuffer, _meshletTriangleIndicesBuffer, 1, &meshletTriangleIndexCopy);
+        _vk.CmdCopyBuffer(transferCmd, srcBuffer, MeshletTriangleIndicesBuffer, 1, &meshletTriangleIndexCopy);
 
         _meshletDataUploaded = true;
     }
@@ -519,8 +486,8 @@ public class MeshBuffer : IDisposable
         Dictionary<uint, uint> localMap,
         List<uint> localVerts,
         Data.RenderingData.Vertex[] vertices,
-        ref System.Numerics.Vector3 boundsMin,
-        ref System.Numerics.Vector3 boundsMax)
+        ref Vector3 boundsMin,
+        ref Vector3 boundsMax)
     {
         if (localMap.TryGetValue(globalIndex, out var localIndex))
             return localIndex;
@@ -530,8 +497,8 @@ public class MeshBuffer : IDisposable
         localVerts.Add(globalIndex);
 
         var v = vertices[globalIndex].Position;
-        boundsMin = System.Numerics.Vector3.Min(boundsMin, v);
-        boundsMax = System.Numerics.Vector3.Max(boundsMax, v);
+        boundsMin = Vector3.Min(boundsMin, v);
+        boundsMax = Vector3.Max(boundsMax, v);
 
         return localIndex;
     }
@@ -542,5 +509,30 @@ public class MeshBuffer : IDisposable
         var max = mesh.BoundingBoxMax;
         var extent = (max - min) * 0.5f;
         return extent.Length();
+    }
+
+    // CPU-side mesh registry
+    public class MeshEntry
+    {
+        public uint VertexOffset { get; set; } // Offset in vertex buffer (in vertices)
+        public uint IndexOffset { get; set; } // Offset in index buffer (in indices)
+        public uint VertexCount { get; set; }
+        public uint IndexCount { get; set; }
+        public uint MeshletOffset { get; set; }
+        public uint MeshletCount { get; set; }
+        public float BoundsRadius { get; set; }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct GPUMeshlet
+    {
+        public uint VertexOffset;
+        public uint VertexCount;
+        public uint TriangleOffset;
+        public uint TriangleCount;
+        public Vector4 BoundsMin;
+        public Vector4 BoundsMax;
+        public Vector4 ConeAxis;
+        public Vector4 ConeData;
     }
 }

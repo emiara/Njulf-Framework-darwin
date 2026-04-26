@@ -7,24 +7,14 @@ namespace NjulfFramework.Rendering.Core;
 
 public class SynchronizationManager : IDisposable
 {
-    private readonly Vk _vk;
     private readonly Device _device;
+    private readonly Vk _vk;
 
     // Per-frame semaphores (for acquiring images)
-    private Semaphore[] _imageAvailableSemaphores = null!;
-
-    private Semaphore[] _transferFinishedSemaphores = null!;
-
-    // Per-image semaphores (for presenting images)
-    private Semaphore[] _renderFinishedSemaphores = null!;
 
     // Per-frame fences
-    private Fence[] _inFlightFences = null!;
 
-    public Semaphore[] ImageAvailableSemaphores => _imageAvailableSemaphores; // Size: MaxFramesInFlight
-    public Semaphore[] TransferFinishedSemaphores => _transferFinishedSemaphores;
-    public Semaphore[] RenderFinishedSemaphores => _renderFinishedSemaphores; // Size: SwapchainImageCount
-    public Fence[] InFlightFences => _inFlightFences; // Size: MaxFramesInFlight
+    // Per-image semaphores (for presenting images)
 
     public SynchronizationManager(Vk vk, Device device, uint swapchainImageCount, uint maxFramesInFlight = 2)
     {
@@ -34,18 +24,45 @@ public class SynchronizationManager : IDisposable
         CreateSemaphoresAndFences(swapchainImageCount, maxFramesInFlight);
     }
 
+    public Semaphore[] ImageAvailableSemaphores { get; private set; } = null!;
+
+    public Semaphore[] TransferFinishedSemaphores { get; private set; } = null!;
+
+    public Semaphore[] RenderFinishedSemaphores { get; private set; } = null!;
+
+    public Fence[] InFlightFences { get; private set; } = null!;
+
+    public unsafe void Dispose()
+    {
+        foreach (var semaphore in ImageAvailableSemaphores)
+            if (semaphore.Handle != 0)
+                _vk.DestroySemaphore(_device, semaphore, null);
+
+        foreach (var semaphore in TransferFinishedSemaphores)
+            if (semaphore.Handle != 0)
+                _vk.DestroySemaphore(_device, semaphore, null);
+
+        foreach (var semaphore in RenderFinishedSemaphores)
+            if (semaphore.Handle != 0)
+                _vk.DestroySemaphore(_device, semaphore, null);
+
+        foreach (var fence in InFlightFences)
+            if (fence.Handle != 0)
+                _vk.DestroyFence(_device, fence, null);
+    }
+
     private unsafe void CreateSemaphoresAndFences(uint swapchainImageCount, uint maxFramesInFlight)
     {
         // ImageAvailableSemaphores: per-frame (acquired in Acquire, consumed in Submit)
-        _imageAvailableSemaphores = new Semaphore[maxFramesInFlight];
+        ImageAvailableSemaphores = new Semaphore[maxFramesInFlight];
 
-        _transferFinishedSemaphores = new Semaphore[maxFramesInFlight];
+        TransferFinishedSemaphores = new Semaphore[maxFramesInFlight];
 
         // RenderFinishedSemaphores: per-image (signaled in Submit, consumed in Present)
-        _renderFinishedSemaphores = new Semaphore[swapchainImageCount];
+        RenderFinishedSemaphores = new Semaphore[swapchainImageCount];
 
         // InFlightFences: per-frame
-        _inFlightFences = new Fence[maxFramesInFlight];
+        InFlightFences = new Fence[maxFramesInFlight];
 
         var semaphoreCreateInfo = new SemaphoreCreateInfo
         {
@@ -60,24 +77,24 @@ public class SynchronizationManager : IDisposable
 
         // Create acquire semaphores (per-frame)
         for (uint i = 0; i < maxFramesInFlight; i++)
-            if (_vk.CreateSemaphore(_device, &semaphoreCreateInfo, null, out _imageAvailableSemaphores[i]) !=
+            if (_vk.CreateSemaphore(_device, &semaphoreCreateInfo, null, out ImageAvailableSemaphores[i]) !=
                 Result.Success)
                 throw new Exception($"Failed to create image available semaphore {i}");
 
         for (uint i = 0; i < maxFramesInFlight; i++)
-            if (_vk.CreateSemaphore(_device, &semaphoreCreateInfo, null, out _transferFinishedSemaphores[i]) !=
+            if (_vk.CreateSemaphore(_device, &semaphoreCreateInfo, null, out TransferFinishedSemaphores[i]) !=
                 Result.Success)
                 throw new Exception($"Failed to create transfer finished semaphore {i}");
 
         // Create render finished semaphores (per-image)
         for (uint i = 0; i < swapchainImageCount; i++)
-            if (_vk.CreateSemaphore(_device, &semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]) !=
+            if (_vk.CreateSemaphore(_device, &semaphoreCreateInfo, null, out RenderFinishedSemaphores[i]) !=
                 Result.Success)
                 throw new Exception($"Failed to create render finished semaphore {i}");
 
         // Create frame fences
         for (uint i = 0; i < maxFramesInFlight; i++)
-            if (_vk.CreateFence(_device, &fenceCreateInfo, null, out _inFlightFences[i]) != Result.Success)
+            if (_vk.CreateFence(_device, &fenceCreateInfo, null, out InFlightFences[i]) != Result.Success)
                 throw new Exception($"Failed to create in-flight fence {i}");
 
         Console.WriteLine(
@@ -92,24 +109,5 @@ public class SynchronizationManager : IDisposable
     public unsafe void ResetFence(Fence fence)
     {
         _vk.ResetFences(_device, 1, &fence);
-    }
-
-    public unsafe void Dispose()
-    {
-        foreach (var semaphore in _imageAvailableSemaphores)
-            if (semaphore.Handle != 0)
-                _vk.DestroySemaphore(_device, semaphore, null);
-
-        foreach (var semaphore in _transferFinishedSemaphores)
-            if (semaphore.Handle != 0)
-                _vk.DestroySemaphore(_device, semaphore, null);
-
-        foreach (var semaphore in _renderFinishedSemaphores)
-            if (semaphore.Handle != 0)
-                _vk.DestroySemaphore(_device, semaphore, null);
-
-        foreach (var fence in _inFlightFences)
-            if (fence.Handle != 0)
-                _vk.DestroyFence(_device, fence, null);
     }
 }

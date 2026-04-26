@@ -1,37 +1,49 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using NjulfFramework.Rendering.Memory;
 using NjulfFramework.Rendering.Resources;
-using Silk.NET.Vulkan;
 using NjulfFramework.Rendering.Resources.Descriptors;
+using Silk.NET.Vulkan;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace NjulfFramework.Rendering.Data;
 
 /// <summary>
-/// Builds GPU scene data from CPU-side RenderObjects.
-/// Collects object transforms, materials, and mesh references into arrays
-/// ready for GPU upload via FrameUploadRing.
+///     Builds GPU scene data from CPU-side RenderObjects.
+///     Collects object transforms, materials, and mesh references into arrays
+///     ready for GPU upload via FrameUploadRing.
 /// </summary>
 public class SceneDataBuilder : IDisposable
 {
-    private readonly List<GPUObjectData> _objectData = new();
     private readonly List<GPUMaterial> _materialData = new();
-    private readonly List<GPUMeshData> _meshData = new();
-    private MeshManager? _meshManager;
-    private TextureManager? _textureManager;
-    private BindlessDescriptorHeap? _bindlessHeap;
-    private Sampler _defaultSampler;
 
     // Cache to avoid duplicate materials/meshes
     private readonly Dictionary<RenderingData.Material, uint> _materialIndexMap = new();
+    private readonly List<GPUMeshData> _meshData = new();
     private readonly Dictionary<RenderingData.Mesh, uint> _meshIndexMap = new();
+    private readonly List<GPUObjectData> _objectData = new();
     private readonly Dictionary<string, uint> _texturePathToIndexMap = new();
+    private BindlessDescriptorHeap? _bindlessHeap;
+    private Sampler _defaultSampler;
+    private MeshManager? _meshManager;
+    private TextureManager? _textureManager;
 
-    public SceneDataBuilder()
+    /// <summary>
+    ///     Get read-only arrays for inspection/debugging.
+    /// </summary>
+    public IReadOnlyList<GPUObjectData> ObjectData => _objectData.AsReadOnly();
+
+    public IReadOnlyList<GPUMaterial> MaterialData => _materialData.AsReadOnly();
+    public IReadOnlyList<GPUMeshData> MeshData => _meshData.AsReadOnly();
+
+    public void Dispose()
     {
+        _objectData.Clear();
+        _materialData.Clear();
+        _meshData.Clear();
+        _materialIndexMap.Clear();
+        _meshIndexMap.Clear();
+        _texturePathToIndexMap.Clear();
     }
 
     public void SetMeshManager(MeshManager? meshManager)
@@ -45,8 +57,8 @@ public class SceneDataBuilder : IDisposable
     }
 
     /// <summary>
-    /// Clear all data at frame start.
-    /// Call once per frame before adding objects.
+    ///     Clear all data at frame start.
+    ///     Call once per frame before adding objects.
     /// </summary>
     public void BeginFrame()
     {
@@ -59,8 +71,8 @@ public class SceneDataBuilder : IDisposable
     }
 
     /// <summary>
-    /// Add a render object to the scene data.
-    /// Automatically deduplicates materials and meshes.
+    ///     Add a render object to the scene data.
+    ///     Automatically deduplicates materials and meshes.
     /// </summary>
     public void AddObject(RenderingData.RenderObject obj)
     {
@@ -85,7 +97,7 @@ public class SceneDataBuilder : IDisposable
     }
 
     /// <summary>
-    /// Add or retrieve a material's GPU index.
+    ///     Add or retrieve a material's GPU index.
     /// </summary>
     private uint GetOrAddMaterial(RenderingData.Material material)
     {
@@ -93,13 +105,13 @@ public class SceneDataBuilder : IDisposable
             return idx;
 
         var newIdx = (uint)_materialData.Count;
-        
+
         // Get texture indices for PBR materials
-        uint baseColorTexIdx = GetOrAddTextureIndex(material.BaseColorTexturePath);
-        uint normalTexIdx = GetOrAddTextureIndex(material.NormalTexturePath);
-        uint metallicRoughnessTexIdx = GetOrAddTextureIndex(material.MetallicRoughnessTexturePath);
-        uint occlusionTexIdx = GetOrAddTextureIndex(material.OcclusionTexturePath);
-        uint emissiveTexIdx = GetOrAddTextureIndex(material.EmissiveTexturePath);
+        var baseColorTexIdx = GetOrAddTextureIndex(material.BaseColorTexturePath);
+        var normalTexIdx = GetOrAddTextureIndex(material.NormalTexturePath);
+        var metallicRoughnessTexIdx = GetOrAddTextureIndex(material.MetallicRoughnessTexturePath);
+        var occlusionTexIdx = GetOrAddTextureIndex(material.OcclusionTexturePath);
+        var emissiveTexIdx = GetOrAddTextureIndex(material.EmissiveTexturePath);
 
         var gpuMaterial = new GPUMaterial(
             material.BaseColorFactor,
@@ -114,10 +126,10 @@ public class SceneDataBuilder : IDisposable
     }
 
     /// <summary>
-    /// Get or add a texture index for a texture path
+    ///     Get or add a texture index for a texture path
     /// </summary>
     /// <summary>
-    /// Get or add a texture index for a texture path
+    ///     Get or add a texture index for a texture path
     /// </summary>
     private uint GetOrAddTextureIndex(string texturePath)
     {
@@ -129,7 +141,6 @@ public class SceneDataBuilder : IDisposable
 
         // Load texture using texture manager
         if (_textureManager != null && _bindlessHeap != null)
-        {
             try
             {
                 // Load texture data from file
@@ -164,15 +175,13 @@ public class SceneDataBuilder : IDisposable
             {
                 Console.WriteLine("Failed to load texture: " + texturePath + ": " + ex.Message);
             }
-            
-        } 
- 
+
         // Fallback: return uint.MaxValue (no texture) 
-        return uint.MaxValue; 
-   }
+        return uint.MaxValue;
+    }
 
     /// <summary>
-    /// Add or retrieve a mesh's GPU index.
+    ///     Add or retrieve a mesh's GPU index.
     /// </summary>
     private uint GetOrAddMesh(RenderingData.Mesh mesh)
     {
@@ -210,8 +219,8 @@ public class SceneDataBuilder : IDisposable
     }
 
     /// <summary>
-    /// Record copy commands to upload all scene data to GPU.
-    /// The FrameUploadRing provides the staging buffers; you supply the destination buffers.
+    ///     Record copy commands to upload all scene data to GPU.
+    ///     The FrameUploadRing provides the staging buffers; you supply the destination buffers.
     /// </summary>
     public unsafe void UploadToGPU(Vk vk, CommandBuffer cmd, FrameUploadRing uploadRing,
         Buffer objectDataBuffer, Buffer materialDataBuffer, Buffer meshDataBuffer)
@@ -273,8 +282,8 @@ public class SceneDataBuilder : IDisposable
     }
 
     /// <summary>
-    /// Get total GPU upload size in bytes.
-    /// Useful for validation before calling UploadToGPU.
+    ///     Get total GPU upload size in bytes.
+    ///     Useful for validation before calling UploadToGPU.
     /// </summary>
     public ulong GetTotalUploadSizeInBytes()
     {
@@ -285,14 +294,6 @@ public class SceneDataBuilder : IDisposable
         return size;
     }
 
-    /// <summary>
-    /// Get read-only arrays for inspection/debugging.
-    /// </summary>
-    public IReadOnlyList<GPUObjectData> ObjectData => _objectData.AsReadOnly();
-
-    public IReadOnlyList<GPUMaterial> MaterialData => _materialData.AsReadOnly();
-    public IReadOnlyList<GPUMeshData> MeshData => _meshData.AsReadOnly();
-
     public void SetBindlessHeap(BindlessDescriptorHeap? bindlessHeap)
     {
         _bindlessHeap = bindlessHeap;
@@ -301,15 +302,5 @@ public class SceneDataBuilder : IDisposable
     public void SetDefaultSampler(Sampler sampler)
     {
         _defaultSampler = sampler;
-    }
-
-    public void Dispose()
-    {
-        _objectData.Clear();
-        _materialData.Clear();
-        _meshData.Clear();
-        _materialIndexMap.Clear();
-        _meshIndexMap.Clear();
-        _texturePathToIndexMap.Clear();
     }
 }

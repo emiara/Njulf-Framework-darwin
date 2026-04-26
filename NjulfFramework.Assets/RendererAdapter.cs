@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using System.Numerics;
 using NjulfFramework.Assets.Models;
 using NjulfFramework.Rendering.Data;
@@ -9,19 +7,19 @@ using NjulfFramework.Rendering.Data;
 namespace NjulfFramework.Assets;
 
 /// <summary>
-/// Bridge between Assets and Rendering systems
+///     Bridge between Assets and Rendering systems
 /// </summary>
 public class RendererAdapter
 {
     /// <summary>
-    /// Constructor
+    ///     Constructor
     /// </summary>
     public RendererAdapter()
     {
     }
 
     /// <summary>
-    /// Convert framework model to renderable objects
+    ///     Convert framework model to renderable objects
     /// </summary>
     public List<RenderingData.RenderObject> ConvertToRenderObjects(FrameworkModel frameworkModel)
     {
@@ -59,7 +57,7 @@ public class RendererAdapter
     }
 
     /// <summary>
-    /// Convert framework mesh to rendering mesh
+    ///     Convert framework mesh to rendering mesh
     /// </summary>
     private RenderingData.Mesh ConvertMesh(FrameworkMesh frameworkMesh)
     {
@@ -86,7 +84,7 @@ public class RendererAdapter
     }
 
     /// <summary>
-    /// Convert framework material to rendering material
+    ///     Convert framework material to rendering material
     /// </summary>
     private RenderingData.Material ConvertMaterial(FrameworkMaterial frameworkMaterial)
     {
@@ -118,7 +116,7 @@ public class RendererAdapter
     }
 
     /// <summary>
-    /// Convert framework model to renderable objects with scene hierarchy
+    ///     Convert framework model to renderable objects with scene hierarchy
     /// </summary>
     public List<RenderingData.RenderObject> ConvertWithHierarchy(FrameworkModel frameworkModel,
         FrameworkModel.SceneNode sceneNode, Matrix4x4 parentTransform)

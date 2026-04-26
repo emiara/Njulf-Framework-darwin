@@ -1,24 +1,21 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.IO;
 using System.Numerics;
-using Silk.NET.Assimp;
-using Silk.NET.Assimp;
 using NjulfFramework.Assets.Models;
+using Silk.NET.Assimp;
 
 namespace NjulfFramework.Assets;
 
 /// <summary>
-/// Processes Assimp scenes into framework models
+///     Processes Assimp scenes into framework models
 /// </summary>
 public class ModelProcessor
 {
-    private readonly MeshConverter _meshConverter;
     private readonly MaterialConverter _materialConverter;
+    private readonly MeshConverter _meshConverter;
 
     /// <summary>
-    /// Constructor
+    ///     Constructor
     /// </summary>
     public ModelProcessor(MeshConverter meshConverter, MaterialConverter materialConverter)
     {
@@ -27,7 +24,7 @@ public class ModelProcessor
     }
 
     /// <summary>
-    /// Process an Assimp scene into a framework model
+    ///     Process an Assimp scene into a framework model
     /// </summary>
     public unsafe FrameworkModel ProcessScene(Scene* scene, string basePath)
     {
@@ -62,7 +59,7 @@ public class ModelProcessor
     }
 
     /// <summary>
-    /// Build scene hierarchy recursively
+    ///     Build scene hierarchy recursively
     /// </summary>
     private unsafe FrameworkModel.SceneNode BuildSceneHierarchy(Node* assimpNode, Scene* scene)
     {
@@ -92,8 +89,8 @@ public class ModelProcessor
     }
 
     /// <summary>
-    /// Convert Assimp matrix to Vulkan-compatible matrix
-    /// Assimp uses row-major matrices, Vulkan expects column-major
+    ///     Convert Assimp matrix to Vulkan-compatible matrix
+    ///     Assimp uses row-major matrices, Vulkan expects column-major
     /// </summary>
     private Matrix4x4 ConvertMatrix(Matrix4x4 assimpMatrix)
     {

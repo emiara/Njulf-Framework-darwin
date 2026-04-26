@@ -6,11 +6,9 @@ namespace NjulfFramework.Rendering.Resources;
 
 public class RenderPassManager : IDisposable
 {
-    private readonly Vk _vk;
     private readonly Device _device;
+    private readonly Vk _vk;
     private RenderPass _renderPass;
-
-    public RenderPass RenderPass => _renderPass;
 
     public RenderPassManager(Vk vk, Device device, Format colorFormat)
     {
@@ -18,6 +16,13 @@ public class RenderPassManager : IDisposable
         _device = device;
 
         CreateRenderPass(colorFormat);
+    }
+
+    public RenderPass RenderPass => _renderPass;
+
+    public unsafe void Dispose()
+    {
+        if (_renderPass.Handle != 0) _vk.DestroyRenderPass(_device, _renderPass, null);
     }
 
     private unsafe void CreateRenderPass(Format colorFormat)
@@ -76,10 +81,5 @@ public class RenderPassManager : IDisposable
 
         if (_vk.CreateRenderPass(_device, &renderPassInfo, null, out _renderPass) != Result.Success)
             throw new Exception("Failed to create render pass");
-    }
-
-    public unsafe void Dispose()
-    {
-        if (_renderPass.Handle != 0) _vk.DestroyRenderPass(_device, _renderPass, null);
     }
 }

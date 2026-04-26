@@ -1,29 +1,28 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
-using Silk.NET.Vulkan;
 using System.Numerics;
-using NjulfFramework.Rendering.Data;
+using Silk.NET.Vulkan;
 
 namespace NjulfFramework.Rendering.Pipeline;
 
 /// <summary>
-/// Render pass that uses Vulkan 1.3 dynamic rendering for rasterization.
-/// Attachments are specified inline in vkCmdBeginRendering instead of 
-/// using VkRenderPass and VkFramebuffer objects.
+///     Render pass that uses Vulkan 1.3 dynamic rendering for rasterization.
+///     Attachments are specified inline in vkCmdBeginRendering instead of
+///     using VkRenderPass and VkFramebuffer objects.
 /// </summary>
 public class DynamicRasterPass : RenderGraphPass
 {
-    private readonly Vk _vk;
+    private readonly Vector4 _clearColor;
     private readonly Device _device;
+    private readonly GraphicsPipeline _pipeline;
+    private readonly Vk _vk;
 
     private ImageView _colorAttachment;
     private ImageView _depthAttachment;
     private Extent2D _extent;
-    private GraphicsPipeline _pipeline;
-    private Vector4 _clearColor;
 
     /// <summary>
-    /// Initialize a dynamic raster pass with color and depth attachments.
+    ///     Initialize a dynamic raster pass with color and depth attachments.
     /// </summary>
     /// <param name="vk">Vulkan API instance</param>
     /// <param name="device">Vulkan device</param>
@@ -48,7 +47,7 @@ public class DynamicRasterPass : RenderGraphPass
     }
 
     /// <summary>
-    /// Set the render target extent (width, height).
+    ///     Set the render target extent (width, height).
     /// </summary>
     public void SetExtent(Extent2D extent)
     {
@@ -56,7 +55,7 @@ public class DynamicRasterPass : RenderGraphPass
     }
 
     /// <summary>
-    /// Execute the raster pass using dynamic rendering.
+    ///     Execute the raster pass using dynamic rendering.
     /// </summary>
     public override unsafe void Execute(CommandBuffer cmd, RenderGraphContext ctx)
     {
@@ -148,10 +147,10 @@ public class DynamicRasterPass : RenderGraphPass
 
 
     /// <summary>
-    /// Draw a single render object from RenderingData module.
-    /// Implement bindless indexing and push constants here.
+    ///     Draw a single render object from RenderingData module.
+    ///     Implement bindless indexing and push constants here.
     /// </summary>
-    private unsafe void DrawObject(CommandBuffer cmd, RenderGraphContext ctx, Data.RenderingData.RenderObject obj)
+    private void DrawObject(CommandBuffer cmd, RenderGraphContext ctx, Data.RenderingData.RenderObject obj)
     {
         // This is a placeholder implementation.
         // In a full implementation, this would:

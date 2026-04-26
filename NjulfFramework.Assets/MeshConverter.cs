@@ -1,26 +1,25 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Numerics;
-using Silk.NET.Assimp;
 using NjulfFramework.Assets.Models;
+using Silk.NET.Assimp;
 
 namespace NjulfFramework.Assets;
 
 /// <summary>
-/// Converts Assimp meshes to framework meshes
+///     Converts Assimp meshes to framework meshes
 /// </summary>
 public class MeshConverter
 {
     /// <summary>
-    /// Constructor
+    ///     Constructor
     /// </summary>
     public MeshConverter()
     {
     }
 
     /// <summary>
-    /// Convert Assimp mesh to framework mesh
+    ///     Convert Assimp mesh to framework mesh
     /// </summary>
     public unsafe FrameworkMesh ConvertMesh(Mesh* assimpMesh, int meshIndex)
     {
@@ -91,7 +90,7 @@ public class MeshConverter
     }
 
     /// <summary>
-    /// Calculate bounding box for vertices
+    ///     Calculate bounding box for vertices
     /// </summary>
     private (Vector3 min, Vector3 max) CalculateBoundingBox(FrameworkMesh.Vertex[] vertices)
     {

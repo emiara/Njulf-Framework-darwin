@@ -5,6 +5,7 @@
 ### ✅ COMPLETED - Core PBR Foundation
 
 #### 1. Basic PBR Material Properties
+
 - ✅ Base Color (Albedo) with texture support
 - ✅ Metallic/Roughness workflow (GLTF 2.0 standard)
 - ✅ Normal mapping with scale control
@@ -13,6 +14,7 @@
 - ✅ Alpha modes (Opaque, Mask, Blend)
 
 #### 2. Material System Integration
+
 - ✅ `RenderingData.Material` class with full PBR properties
 - ✅ `FrameworkMaterial` class for asset pipeline
 - ✅ `GPUMaterial` struct for GPU upload
@@ -20,18 +22,21 @@
 - ✅ Proper texture loading and management
 
 #### 3. Scene Data Builder Fixes
+
 - ✅ Texture manager integration with bindless heap
 - ✅ Buffer manager integration for mesh buffers
 - ✅ Complete PBR parameter conversion
 - ✅ Resource caching and deduplication
 
 #### 4. Shader Integration
+
 - ✅ PBR material structure matching GPU layout
 - ✅ Complete PBR lighting equations (GGX/Smith)
 - ✅ Texture sampling for all PBR maps
 - ✅ Proper material property usage in lighting
 
 #### 5. Validation & Safety
+
 - ✅ Structure size validation
 - ✅ Runtime scene data validation
 - ✅ Error handling for invalid materials
@@ -40,6 +45,7 @@
 ### 🔜 PLANNED - Advanced PBR Features
 
 #### 1. Extended Material Properties
+
 - Clear coat layer with glossiness control
 - Sheen layer for cloth/fabric materials
 - Transmission/transparency for glass materials
@@ -48,6 +54,7 @@
 - Subsurface scattering approximation
 
 #### 2. Material System Enhancements
+
 - Material inheritance and instances
 - Material LOD (Level of Detail)
 - Procedural material generation
@@ -55,6 +62,7 @@
 - Material variants and overrides
 
 #### 3. Texture & Sampling Improvements
+
 - Texture atlas support for batching
 - Mipmap generation and filtering
 - Cubemap support for environment reflections
@@ -62,6 +70,7 @@
 - Texture array support
 
 #### 4. Performance Optimizations
+
 - Material sorting by properties
 - Instanced rendering optimizations
 - GPU-driven rendering integration
@@ -69,6 +78,7 @@
 - Memory-efficient material storage
 
 #### 5. Advanced Rendering Features
+
 - Screen-space reflections
 - Image-based lighting (IBL)
 - Environment probe system
@@ -76,6 +86,7 @@
 - Ray tracing integration
 
 #### 6. Debugging & Tooling
+
 - PBR material inspector/editor
 - Texture viewer with mipmap visualization
 - Material property visualization modes
@@ -83,6 +94,7 @@
 - Performance profiling tools
 
 #### 7. Asset Pipeline Enhancements
+
 - GLTF 2.0 extensions support
 - MaterialX integration
 - Substance Painter export support
@@ -90,6 +102,7 @@
 - Material baking tools
 
 #### 8. Cross-Platform Considerations
+
 - Fallback systems for unsupported features
 - Mobile-optimized material variants
 - Vulkan/DirectX/Metal feature parity
@@ -98,18 +111,21 @@
 ### 🎨 Artistic Control Features
 
 #### 1. Material Authoring
+
 - Visual material editor
 - Node-based material graphs
 - Preset material library
 - Physically-based material templates
 
 #### 2. Quality Settings
+
 - Quality presets (Low/Medium/High/Ultra)
 - Per-material quality overrides
 - Dynamic quality scaling
 - Platform-specific quality profiles
 
 #### 3. Visual Effects
+
 - Decal system for surface details
 - Weathering and wear effects
 - Dynamic material parameters
@@ -118,18 +134,21 @@
 ### 🔧 Technical Infrastructure
 
 #### 1. Memory Management
+
 - GPU memory budgeting
 - Texture streaming system
 - Resource garbage collection
 - Memory usage visualization
 
 #### 2. Multi-threading
+
 - Parallel material processing
 - Async texture uploads
 - Background resource loading
 - Thread-safe material access
 
 #### 3. Serialization
+
 - Material serialization/deserialization
 - Versioned material formats
 - Material caching system
@@ -147,6 +166,7 @@
 ## 📊 Technical Details
 
 ### GPUMaterial Structure (80 bytes, 16-byte aligned)
+
 ```
 BaseColor: Vector4 (16 bytes)
 MetallicFactor: float (4 bytes)
@@ -167,6 +187,7 @@ Padding3: uint (4 bytes) → 80 bytes total
 ```
 
 ### Shader Compatibility
+
 - GLSL `PBRMaterial` struct matches C# `GPUMaterial` layout
 - Proper std430 memory layout alignment
 - All texture indices use `int` in GLSL (no unsigned integers)
@@ -174,6 +195,7 @@ Padding3: uint (4 bytes) → 80 bytes total
 ## 🚀 Current Capabilities
 
 The implemented PBR system supports:
+
 - **GLTF 2.0 Metallic-Roughness workflow**
 - **Physically-based lighting** with GGX/Smith BRDF
 - **Complete material property set** for realistic rendering

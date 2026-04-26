@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System.Numerics;
-using System.Collections.Generic;
 
 namespace NjulfFramework.Assets.Models;
 
 /// <summary>
-/// Framework-agnostic 3D model representation
+///     Framework-agnostic 3D model representation
 /// </summary>
 public class FrameworkModel
 {
@@ -16,7 +15,7 @@ public class FrameworkModel
     public SceneNode RootNode { get; set; }
 
     /// <summary>
-    /// Scene hierarchy node
+    ///     Scene hierarchy node
     /// </summary>
     public class SceneNode
     {
@@ -28,7 +27,7 @@ public class FrameworkModel
 }
 
 /// <summary>
-/// Framework-agnostic mesh representation
+///     Framework-agnostic mesh representation
 /// </summary>
 public class FrameworkMesh
 {
@@ -40,7 +39,7 @@ public class FrameworkMesh
     public int MaterialIndex { get; set; } = 0;
 
     /// <summary>
-    /// Vertex structure matching renderer's Vertex format
+    ///     Vertex structure matching renderer's Vertex format
     /// </summary>
     public struct Vertex
     {
@@ -53,7 +52,7 @@ public class FrameworkMesh
 }
 
 /// <summary>
-/// Framework-agnostic material representation
+///     Framework-agnostic material representation
 /// </summary>
 public class FrameworkMaterial
 {
@@ -79,7 +78,7 @@ public class FrameworkMaterial
 }
 
 /// <summary>
-/// Alpha mode for material transparency
+///     Alpha mode for material transparency
 /// </summary>
 public enum AlphaMode
 {

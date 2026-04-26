@@ -1,27 +1,26 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
-using Silk.NET.Windowing;
-using Silk.NET.Maths;
 using BepuPhysics;
+using Silk.NET.Maths;
+using Silk.NET.Windowing;
 
 namespace NjulfFramework.Core;
 
 /// <summary>
-/// Core framework base class that games will inherit from.
-/// Provides the main game loop and lifecycle hooks.
+///     Core framework base class that games will inherit from.
+///     Provides the main game loop and lifecycle hooks.
 /// </summary>
 public abstract class GameFramework
 {
+    private const uint WindowWidth = 1280;
+    private const uint WindowHeight = 720;
+    private const string WindowTitle = "Njulf Framework Game";
     protected IWindow? Window { get; private set; }
     protected Simulation? PhysicsSimulation { get; private set; }
     protected float DeltaTime { get; private set; }
 
-    private const uint WindowWidth = 1280;
-    private const uint WindowHeight = 720;
-    private const string WindowTitle = "Njulf Framework Game";
-
     /// <summary>
-    /// Initializes and runs the game framework.
+    ///     Initializes and runs the game framework.
     /// </summary>
     public void Run()
     {
@@ -43,7 +42,7 @@ public abstract class GameFramework
     }
 
     /// <summary>
-    /// Initializes the Silk.NET window with Vulkan rendering context.
+    ///     Initializes the Silk.NET window with Vulkan rendering context.
     /// </summary>
     private void InitializeWindow()
     {
@@ -64,7 +63,7 @@ public abstract class GameFramework
     }
 
     /// <summary>
-    /// Initializes the BepiPhysics2 simulation.
+    ///     Initializes the BepiPhysics2 simulation.
     /// </summary>
     private void InitializePhysics()
     {
@@ -74,7 +73,7 @@ public abstract class GameFramework
     }
 
     /// <summary>
-    /// Called when the window closes.
+    ///     Called when the window closes.
     /// </summary>
     private void OnClosing()
     {
@@ -82,7 +81,7 @@ public abstract class GameFramework
     }
 
     /// <summary>
-    /// Called once per frame for update logic.
+    ///     Called once per frame for update logic.
     /// </summary>
     private void OnUpdate(double deltaTimeSeconds)
     {
@@ -96,7 +95,7 @@ public abstract class GameFramework
     }
 
     /// <summary>
-    /// Called once per frame for rendering.
+    ///     Called once per frame for rendering.
     /// </summary>
     private void OnRender(double deltaTimeSeconds)
     {
@@ -111,7 +110,7 @@ public abstract class GameFramework
     }
 
     /// <summary>
-    /// Updates the physics simulation.
+    ///     Updates the physics simulation.
     /// </summary>
     private void UpdatePhysics(float deltaTime)
     {
@@ -123,24 +122,24 @@ public abstract class GameFramework
     }
 
     /// <summary>
-    /// Abstract method called once when the game first loads.
-    /// Override this to initialize your game resources.
+    ///     Abstract method called once when the game first loads.
+    ///     Override this to initialize your game resources.
     /// </summary>
     public abstract void Load();
 
     /// <summary>
-    /// Abstract method called every frame for game logic updates.
+    ///     Abstract method called every frame for game logic updates.
     /// </summary>
     public abstract void Update(float deltaTime);
 
     /// <summary>
-    /// Abstract method called every frame for rendering.
+    ///     Abstract method called every frame for rendering.
     /// </summary>
     public abstract void Draw();
 
     /// <summary>
-    /// Called when the framework is shutting down.
-    /// Override to cleanup resources.
+    ///     Called when the framework is shutting down.
+    ///     Override to cleanup resources.
     /// </summary>
     public virtual void Cleanup()
     {

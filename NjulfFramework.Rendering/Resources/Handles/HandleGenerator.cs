@@ -5,7 +5,8 @@ namespace NjulfFramework.Rendering.Resources.Handles;
 public sealed class HandleGenerator
 {
     private uint _nextIndex = 1; // 0 = invalid
-    private uint _generation = 1;
+
+    public uint CurrentGeneration { get; private set; } = 1;
 
     public uint AllocateIndex()
     {
@@ -13,11 +14,9 @@ public sealed class HandleGenerator
         if (_nextIndex == 0)
         {
             _nextIndex = 1;
-            _generation++;
+            CurrentGeneration++;
         }
 
         return _nextIndex++;
     }
-
-    public uint CurrentGeneration => _generation;
 }

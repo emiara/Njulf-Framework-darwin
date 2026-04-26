@@ -1,29 +1,26 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.IO;
 using System.Numerics;
-using Silk.NET.Assimp;
 using NjulfFramework.Assets.Models;
+using Silk.NET.Assimp;
 
 namespace NjulfFramework.Assets;
 
 /// <summary>
-/// Converts Assimp materials to framework materials
+///     Converts Assimp materials to framework materials
 /// </summary>
 public class MaterialConverter
 {
-    private readonly Assimp _assimp;
-
     // Assimp C API material key strings
     private const string AiMatkeyName = "?mat.name";
     private const string AiMatkeyColorDiffuse = "$clr.diffuse";
     private const string AiMatkeyColorEmissive = "$clr.emissive";
     private const string AiMatkeyOpacity = "$mat.opacity";
     private const string AiMatkeyTwosided = "$mat.twosided";
+    private readonly Assimp _assimp;
 
     /// <summary>
-    /// Constructor
+    ///     Constructor
     /// </summary>
     public MaterialConverter()
     {
@@ -31,7 +28,7 @@ public class MaterialConverter
     }
 
     /// <summary>
-    /// Convert Assimp material to framework material
+    ///     Convert Assimp material to framework material
     /// </summary>
     public unsafe FrameworkMaterial ConvertMaterial(Material* assimpMaterial, string basePath)
     {
@@ -53,7 +50,7 @@ public class MaterialConverter
     }
 
     /// <summary>
-    /// Get material name from Assimp material
+    ///     Get material name from Assimp material
     /// </summary>
     private unsafe string GetMaterialName(Material* material)
     {
@@ -65,7 +62,7 @@ public class MaterialConverter
     }
 
     /// <summary>
-    /// Helper to get a texture path for a given texture type
+    ///     Helper to get a texture path for a given texture type
     /// </summary>
     private unsafe string GetTexturePath(Material* assimpMaterial, TextureType type, string basePath)
     {
@@ -88,7 +85,7 @@ public class MaterialConverter
     }
 
     /// <summary>
-    /// Convert PBR properties
+    ///     Convert PBR properties
     /// </summary>
     private unsafe void ConvertPBRProperties(Material* assimpMaterial, FrameworkMaterial frameworkMaterial,
         string basePath)
@@ -132,7 +129,7 @@ public class MaterialConverter
     }
 
     /// <summary>
-    /// Convert alpha properties
+    ///     Convert alpha properties
     /// </summary>
     private unsafe void ConvertAlphaProperties(Material* assimpMaterial, FrameworkMaterial frameworkMaterial)
     {
@@ -145,7 +142,7 @@ public class MaterialConverter
     }
 
     /// <summary>
-    /// Convert double-sided property
+    ///     Convert double-sided property
     /// </summary>
     private unsafe void ConvertDoubleSidedProperty(Material* assimpMaterial, FrameworkMaterial frameworkMaterial)
     {
@@ -156,7 +153,7 @@ public class MaterialConverter
     }
 
     /// <summary>
-    /// Get absolute texture path
+    ///     Get absolute texture path
     /// </summary>
     private string GetAbsoluteTexturePath(string texturePath, string basePath)
     {

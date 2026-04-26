@@ -210,10 +210,10 @@ void main()
 
     // Get material data (simplified - would read from buffer in real implementation)
     PBRMaterial material;
-    material.baseColorFactor = vec4(0.8, 0.8, 0.8, 1.0); // Default white
+    material.baseColorFactor = vec4(0.8, 0.8, 0.8, 1.0);// Default white
     material.metallicFactor = 0.5;
     material.roughnessFactor = 0.5;
-    material.baseColorTextureIndex = -1; // No texture
+    material.baseColorTextureIndex = -1;// No texture
     material.metallicRoughnessTextureIndex = -1;
     material.normalTextureIndex = -1;
     material.occlusionTextureIndex = -1;
@@ -234,24 +234,24 @@ void main()
     if (material.metallicRoughnessTextureIndex >= 0)
     {
         vec4 mrSample = texture(textures[material.metallicRoughnessTextureIndex], inTexCoord);
-        metallic = mrSample.b; // Metallic in blue channel
-        roughness = mrSample.g; // Roughness in green channel
+        metallic = mrSample.b;// Metallic in blue channel
+        roughness = mrSample.g;// Roughness in green channel
     }
 
     // Normal mapping
     vec3 normal = inNormal;
     float nlen = length(normal);
     if (nlen < 1e-5)
-        normal = vec3(0.0, 1.0, 0.0);
+    normal = vec3(0.0, 1.0, 0.0);
     else
-        normal /= nlen;
+    normal /= nlen;
 
     if (material.normalTextureIndex >= 0)
     {
         vec3 tangentNormal = texture(textures[material.normalTextureIndex], inTexCoord).xyz * 2.0 - 1.0;
         tangentNormal.xy *= material.normalScale;
         tangentNormal = normalize(tangentNormal);
-        
+
         // TBN matrix would be needed here for proper normal mapping
         // For now, just apply as perturbation
         normal = normalize(normal + tangentNormal * 0.1);
@@ -282,7 +282,7 @@ void main()
             uint lightIdx = getLightIndex(header.lightListOffset + i);
             GPULight light = getLight(lightIdx);
             if (light.lightTypeData.x != 0u)
-                continue;
+            continue;
 
             vec3 lightPos = light.positionRadius.xyz;
             float lightRadius = light.positionRadius.w;

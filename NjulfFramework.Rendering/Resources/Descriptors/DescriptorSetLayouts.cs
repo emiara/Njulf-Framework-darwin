@@ -1,27 +1,21 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
-using System;
 using Silk.NET.Vulkan;
 
 namespace NjulfFramework.Rendering.Resources.Descriptors;
 
 /// <summary>
-/// Manages descriptor set layouts for bindless rendering (Solution 1: Single Large Binding).
-/// - Set 0: Single large bindless storage buffer array (65536 descriptors)
-/// - Set 1: Single large bindless texture array (65536 descriptors)
+///     Manages descriptor set layouts for bindless rendering (Solution 1: Single Large Binding).
+///     - Set 0: Single large bindless storage buffer array (65536 descriptors)
+///     - Set 1: Single large bindless texture array (65536 descriptors)
 /// </summary>
 public sealed class DescriptorSetLayouts : IDisposable
 {
-    private readonly Vk _vk;
-    private readonly Device _device;
-    private readonly PhysicalDevice _physicalDevice;
-
-    public DescriptorSetLayout BufferHeapLayout { get; private set; }
-    public DescriptorSetLayout TextureHeapLayout { get; private set; }
-    public DescriptorSetLayout MeshBuffersLayout { get; private set; }
-
     private const uint MaxBindlessBuffers = 65536;
     private const uint MaxBindlessTextures = 65536;
+    private readonly Device _device;
+    private readonly PhysicalDevice _physicalDevice;
+    private readonly Vk _vk;
 
     public DescriptorSetLayouts(Vk vk, Device device, PhysicalDevice physicalDevice)
     {
@@ -29,6 +23,31 @@ public sealed class DescriptorSetLayouts : IDisposable
         _device = device;
         _physicalDevice = physicalDevice;
         CreateLayouts();
+    }
+
+    public DescriptorSetLayout BufferHeapLayout { get; private set; }
+    public DescriptorSetLayout TextureHeapLayout { get; private set; }
+    public DescriptorSetLayout MeshBuffersLayout { get; private set; }
+
+    public unsafe void Dispose()
+    {
+        if (BufferHeapLayout.Handle != 0)
+        {
+            _vk.DestroyDescriptorSetLayout(_device, BufferHeapLayout, null);
+            BufferHeapLayout = default;
+        }
+
+        if (TextureHeapLayout.Handle != 0)
+        {
+            _vk.DestroyDescriptorSetLayout(_device, TextureHeapLayout, null);
+            TextureHeapLayout = default;
+        }
+
+        if (MeshBuffersLayout.Handle != 0)
+        {
+            _vk.DestroyDescriptorSetLayout(_device, MeshBuffersLayout, null);
+            MeshBuffersLayout = default;
+        }
     }
 
     private unsafe void CreateLayouts()
@@ -199,26 +218,5 @@ public sealed class DescriptorSetLayouts : IDisposable
         MeshBuffersLayout = meshLayout;
 
         Console.WriteLine("✓ Descriptor layouts created (bindless single binding per set)");
-    }
-
-    public unsafe void Dispose()
-    {
-        if (BufferHeapLayout.Handle != 0)
-        {
-            _vk.DestroyDescriptorSetLayout(_device, BufferHeapLayout, null);
-            BufferHeapLayout = default;
-        }
-
-        if (TextureHeapLayout.Handle != 0)
-        {
-            _vk.DestroyDescriptorSetLayout(_device, TextureHeapLayout, null);
-            TextureHeapLayout = default;
-        }
-
-        if (MeshBuffersLayout.Handle != 0)
-        {
-            _vk.DestroyDescriptorSetLayout(_device, MeshBuffersLayout, null);
-            MeshBuffersLayout = default;
-        }
     }
 }

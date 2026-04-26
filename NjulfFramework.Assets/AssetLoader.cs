@@ -1,18 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
-using Silk.NET.Assimp;
 using NjulfFramework.Assets.Interfaces;
 using NjulfFramework.Assets.Models;
+using Silk.NET.Assimp;
 using File = System.IO.File;
 
 namespace NjulfFramework.Assets;
 
 /// <summary>
-/// Main asset loader implementation
+///     Main asset loader implementation
 /// </summary>
 public class AssetLoader : IAssetLoader
 {
@@ -20,10 +16,8 @@ public class AssetLoader : IAssetLoader
     private readonly AssimpImporter _importer;
     private readonly ModelProcessor _processor;
 
-    public event EventHandler<AssetLoadProgress> LoadProgress;
-
     /// <summary>
-    /// Constructor
+    ///     Constructor
     /// </summary>
     public AssetLoader(AssetCache assetCache, AssimpImporter importer, ModelProcessor processor)
     {
@@ -32,8 +26,10 @@ public class AssetLoader : IAssetLoader
         _processor = processor;
     }
 
+    public event EventHandler<AssetLoadProgress> LoadProgress;
+
     /// <summary>
-    /// Load a 3D model asynchronously
+    ///     Load a 3D model asynchronously
     /// </summary>
     public async Task<FrameworkModel> LoadModelAsync(string filePath, CancellationToken cancellationToken = default)
     {
@@ -73,7 +69,7 @@ public class AssetLoader : IAssetLoader
     }
 
     /// <summary>
-    /// Get a cached model if available
+    ///     Get a cached model if available
     /// </summary>
     public FrameworkModel GetCachedModel(string filePath)
     {
@@ -81,24 +77,24 @@ public class AssetLoader : IAssetLoader
     }
 
     /// <summary>
-    /// Clear the asset cache
+    ///     Clear the asset cache
     /// </summary>
     public void ClearCache()
     {
         _assetCache.Clear();
     }
 
-    /// <summary>
-    /// Raise load progress event
-    /// </summary>
-    protected virtual void OnLoadProgress(AssetLoadProgress progress)
-    {
-        LoadProgress?.Invoke(this, progress);
-    }
-
 
     public void Dispose()
     {
         _importer.Dispose();
+    }
+
+    /// <summary>
+    ///     Raise load progress event
+    /// </summary>
+    protected virtual void OnLoadProgress(AssetLoadProgress progress)
+    {
+        LoadProgress?.Invoke(this, progress);
     }
 }

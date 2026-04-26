@@ -1,26 +1,18 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
-using Silk.NET.Vulkan;
-using NjulfFramework.Rendering.Data;
+using System.Runtime.InteropServices;
 using NjulfFramework.Rendering.Shaders;
-using static Silk.NET.Vulkan.Pipeline;
+using Silk.NET.Vulkan;
 
 namespace NjulfFramework.Rendering.Pipeline;
 
 public class GraphicsPipeline : IDisposable
 {
-    private readonly Vk _vk;
-    private readonly Device _device;
-    private Silk.NET.Vulkan.Pipeline _pipeline;
-    public PipelineLayout PipelineLayout;
-
     // Dynamic rendering formats (no more RenderPass needed!)
-    private Format _colorFormat;
-    private Format _depthFormat;
-
-    public Silk.NET.Vulkan.Pipeline Pipeline => _pipeline;
-    public Format ColorFormat => _colorFormat;
-    public Format DepthFormat => _depthFormat;
+    private readonly Device _device;
+    private readonly Silk.NET.Vulkan.Pipeline _pipeline;
+    private readonly Vk _vk;
+    public PipelineLayout PipelineLayout;
 
     public unsafe GraphicsPipeline(
         Vk vk,
@@ -35,8 +27,8 @@ public class GraphicsPipeline : IDisposable
     {
         _vk = vk;
         _device = device;
-        _colorFormat = colorFormat;
-        _depthFormat = depthFormat;
+        ColorFormat = colorFormat;
+        DepthFormat = depthFormat;
 
         // Compile shaders from GLSL to SPIR-V
         Console.WriteLine($"Compiling vertex shader: {vertShaderPath}");
@@ -61,7 +53,7 @@ public class GraphicsPipeline : IDisposable
                     SType = StructureType.PipelineShaderStageCreateInfo,
                     Stage = ShaderStageFlags.VertexBit,
                     Module = vertShaderModule,
-                    PName = (byte*)System.Runtime.InteropServices.Marshal.StringToHGlobalAnsi("main")
+                    PName = (byte*)Marshal.StringToHGlobalAnsi("main")
                 };
 
                 var fragStageInfo = new PipelineShaderStageCreateInfo
@@ -69,7 +61,7 @@ public class GraphicsPipeline : IDisposable
                     SType = StructureType.PipelineShaderStageCreateInfo,
                     Stage = ShaderStageFlags.FragmentBit,
                     Module = fragShaderModule,
-                    PName = (byte*)System.Runtime.InteropServices.Marshal.StringToHGlobalAnsi("main")
+                    PName = (byte*)Marshal.StringToHGlobalAnsi("main")
                 };
 
                 var shaderStages = stackalloc PipelineShaderStageCreateInfo[] { vertStageInfo, fragStageInfo };
@@ -243,8 +235,8 @@ public class GraphicsPipeline : IDisposable
 
 
                 // This replaces VkRenderPass and VkFramebuffer in the pipeline creation
-                var colorAttachmentFormat = _colorFormat;
-                var depthAttachmentFormat = _depthFormat;
+                var colorAttachmentFormat = ColorFormat;
+                var depthAttachmentFormat = DepthFormat;
 
                 var pipelineRenderingInfo = new PipelineRenderingCreateInfo
                 {
@@ -299,6 +291,18 @@ public class GraphicsPipeline : IDisposable
         }
     }
 
+    public Silk.NET.Vulkan.Pipeline Pipeline => _pipeline;
+    public Format ColorFormat { get; }
+
+    public Format DepthFormat { get; }
+
+    public unsafe void Dispose()
+    {
+        if (_pipeline.Handle != 0) _vk.DestroyPipeline(_device, _pipeline, null);
+
+        if (PipelineLayout.Handle != 0) _vk.DestroyPipelineLayout(_device, PipelineLayout, null);
+    }
+
     private unsafe ShaderModule CreateShaderModule(byte[] spirvBytecode)
     {
         fixed (byte* codePtr = spirvBytecode)
@@ -315,12 +319,5 @@ public class GraphicsPipeline : IDisposable
 
             return shaderModule;
         }
-    }
-
-    public unsafe void Dispose()
-    {
-        if (_pipeline.Handle != 0) _vk.DestroyPipeline(_device, _pipeline, null);
-
-        if (PipelineLayout.Handle != 0) _vk.DestroyPipelineLayout(_device, PipelineLayout, null);
     }
 }

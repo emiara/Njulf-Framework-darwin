@@ -7,7 +7,7 @@ namespace NjulfFramework.Rendering.Shaders;
 public static class ShaderCompiler
 {
     /// <summary>
-    /// Compile a GLSL shader file to SPIR-V.
+    ///     Compile a GLSL shader file to SPIR-V.
     /// </summary>
     public static byte[] CompileGlslToSpirv(string glslSourcePath, ShaderStage stage)
     {
@@ -51,7 +51,7 @@ public static class ShaderCompiler
     }
 
     /// <summary>
-    /// Load pre-compiled SPIR-V bytecode from file.
+    ///     Load pre-compiled SPIR-V bytecode from file.
     /// </summary>
     public static byte[] LoadSpirv(string spirvPath)
     {

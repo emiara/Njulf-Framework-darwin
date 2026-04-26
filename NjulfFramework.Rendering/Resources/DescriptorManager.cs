@@ -1,24 +1,19 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
 using Silk.NET.Vulkan;
-using System;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace NjulfFramework.Rendering.Resources;
 
 public class DescriptorManager : IDisposable
 {
-    private readonly Vk _vk;
     private readonly Device _device;
+    private readonly Vk _vk;
+    private DescriptorPool _descriptorPool;
 
     private DescriptorSetLayout _descriptorSetLayout;
-    private DescriptorPool _descriptorPool;
-    private DescriptorSet[] _descriptorSets = null!;
 
-    public DescriptorSetLayout DescriptorSetLayout => _descriptorSetLayout;
-    public DescriptorSet[] DescriptorSets => _descriptorSets;
-
-    public unsafe DescriptorManager(Vk vk, Device device, uint framesInFlight)
+    public DescriptorManager(Vk vk, Device device, uint framesInFlight)
     {
         _vk = vk;
         _device = device;
@@ -26,6 +21,17 @@ public class DescriptorManager : IDisposable
         CreateDescriptorSetLayout();
         CreateDescriptorPool(framesInFlight);
         AllocateDescriptorSets(framesInFlight);
+    }
+
+    public DescriptorSetLayout DescriptorSetLayout => _descriptorSetLayout;
+    public DescriptorSet[] DescriptorSets { get; private set; } = null!;
+
+
+    public unsafe void Dispose()
+    {
+        if (_descriptorPool.Handle != 0) _vk.DestroyDescriptorPool(_device, _descriptorPool, null);
+
+        if (_descriptorSetLayout.Handle != 0) _vk.DestroyDescriptorSetLayout(_device, _descriptorSetLayout, null);
     }
 
     private unsafe void CreateDescriptorSetLayout()
@@ -89,8 +95,8 @@ public class DescriptorManager : IDisposable
                 PSetLayouts = layoutsPtr
             };
 
-            _descriptorSets = new DescriptorSet[framesInFlight];
-            fixed (DescriptorSet* descriptorSetsPtr = _descriptorSets)
+            DescriptorSets = new DescriptorSet[framesInFlight];
+            fixed (DescriptorSet* descriptorSetsPtr = DescriptorSets)
             {
                 if (_vk.AllocateDescriptorSets(_device, &allocInfo, descriptorSetsPtr) != Result.Success)
                     throw new Exception("Failed to allocate descriptor sets");
@@ -102,7 +108,7 @@ public class DescriptorManager : IDisposable
 
     public unsafe void UpdateDescriptorSet(uint frameIndex, Buffer uniformBuffer, ulong bufferSize)
     {
-        if (frameIndex >= _descriptorSets.Length) throw new ArgumentOutOfRangeException(nameof(frameIndex));
+        if (frameIndex >= DescriptorSets.Length) throw new ArgumentOutOfRangeException(nameof(frameIndex));
 
         Console.WriteLine(
             $"Updating descriptor set {frameIndex} with buffer handle {uniformBuffer.Handle}, size {bufferSize}");
@@ -117,7 +123,7 @@ public class DescriptorManager : IDisposable
         var descriptorWrite = new WriteDescriptorSet
         {
             SType = StructureType.WriteDescriptorSet,
-            DstSet = _descriptorSets[frameIndex],
+            DstSet = DescriptorSets[frameIndex],
             DstBinding = 0,
             DstArrayElement = 0,
             DescriptorType = DescriptorType.UniformBuffer,
@@ -130,13 +136,5 @@ public class DescriptorManager : IDisposable
         _vk.UpdateDescriptorSets(_device, 1, &descriptorWrite, 0, null);
 
         Console.WriteLine($"✓ Descriptor set {frameIndex} updated successfully");
-    }
-
-
-    public unsafe void Dispose()
-    {
-        if (_descriptorPool.Handle != 0) _vk.DestroyDescriptorPool(_device, _descriptorPool, null);
-
-        if (_descriptorSetLayout.Handle != 0) _vk.DestroyDescriptorSetLayout(_device, _descriptorSetLayout, null);
     }
 }

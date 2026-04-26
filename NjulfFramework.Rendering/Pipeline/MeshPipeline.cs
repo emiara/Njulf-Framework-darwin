@@ -1,24 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using Silk.NET.Vulkan;
-using NjulfFramework.Rendering.Data;
+using System.Runtime.InteropServices;
 using NjulfFramework.Rendering.Shaders;
+using Silk.NET.Vulkan;
 
 namespace NjulfFramework.Rendering.Pipeline;
 
 public class MeshPipeline : IDisposable
 {
-    private readonly Vk _vk;
     private readonly Device _device;
-    private Silk.NET.Vulkan.Pipeline _pipeline;
+    private readonly Silk.NET.Vulkan.Pipeline _pipeline;
+    private readonly Vk _vk;
     public PipelineLayout PipelineLayout;
-
-    private readonly Format _colorFormat;
-    private readonly Format _depthFormat;
-
-    public Silk.NET.Vulkan.Pipeline Pipeline => _pipeline;
-    public Format ColorFormat => _colorFormat;
-    public Format DepthFormat => _depthFormat;
 
     public unsafe MeshPipeline(
         Vk vk,
@@ -33,8 +26,8 @@ public class MeshPipeline : IDisposable
     {
         _vk = vk;
         _device = device;
-        _colorFormat = colorFormat;
-        _depthFormat = depthFormat;
+        ColorFormat = colorFormat;
+        DepthFormat = depthFormat;
 
         var meshSpirv = ShaderCompiler.CompileGlslToSpirv(meshShaderPath, ShaderStage.Mesh);
         var fragSpirv = ShaderCompiler.CompileGlslToSpirv(fragShaderPath, ShaderStage.Fragment);
@@ -54,7 +47,7 @@ public class MeshPipeline : IDisposable
                 SType = StructureType.PipelineShaderStageCreateInfo,
                 Stage = ShaderStageFlags.MeshBitExt,
                 Module = meshShaderModule,
-                PName = (byte*)System.Runtime.InteropServices.Marshal.StringToHGlobalAnsi("main")
+                PName = (byte*)Marshal.StringToHGlobalAnsi("main")
             };
 
             var fragStageInfo = new PipelineShaderStageCreateInfo
@@ -62,7 +55,7 @@ public class MeshPipeline : IDisposable
                 SType = StructureType.PipelineShaderStageCreateInfo,
                 Stage = ShaderStageFlags.FragmentBit,
                 Module = fragShaderModule,
-                PName = (byte*)System.Runtime.InteropServices.Marshal.StringToHGlobalAnsi("main")
+                PName = (byte*)Marshal.StringToHGlobalAnsi("main")
             };
 
             PipelineShaderStageCreateInfo taskStageInfo = default;
@@ -74,7 +67,7 @@ public class MeshPipeline : IDisposable
                     SType = StructureType.PipelineShaderStageCreateInfo,
                     Stage = ShaderStageFlags.TaskBitExt,
                     Module = taskShaderModule,
-                    PName = (byte*)System.Runtime.InteropServices.Marshal.StringToHGlobalAnsi("main")
+                    PName = (byte*)Marshal.StringToHGlobalAnsi("main")
                 };
                 stageCount = 3;
             }
@@ -171,8 +164,8 @@ public class MeshPipeline : IDisposable
                     throw new Exception("Failed to create mesh pipeline layout");
             }
 
-            var colorAttachmentFormat = _colorFormat;
-            var depthAttachmentFormat = _depthFormat;
+            var colorAttachmentFormat = ColorFormat;
+            var depthAttachmentFormat = DepthFormat;
             var pipelineRenderingInfo = new PipelineRenderingCreateInfo
             {
                 SType = StructureType.PipelineRenderingCreateInfo,
@@ -219,6 +212,18 @@ public class MeshPipeline : IDisposable
         }
     }
 
+    public Silk.NET.Vulkan.Pipeline Pipeline => _pipeline;
+    public Format ColorFormat { get; }
+
+    public Format DepthFormat { get; }
+
+    public unsafe void Dispose()
+    {
+        if (_pipeline.Handle != 0) _vk.DestroyPipeline(_device, _pipeline, null);
+
+        if (PipelineLayout.Handle != 0) _vk.DestroyPipelineLayout(_device, PipelineLayout, null);
+    }
+
     private unsafe ShaderModule CreateShaderModule(byte[] spirvBytecode)
     {
         fixed (byte* codePtr = spirvBytecode)
@@ -235,12 +240,5 @@ public class MeshPipeline : IDisposable
 
             return shaderModule;
         }
-    }
-
-    public unsafe void Dispose()
-    {
-        if (_pipeline.Handle != 0) _vk.DestroyPipeline(_device, _pipeline, null);
-
-        if (PipelineLayout.Handle != 0) _vk.DestroyPipelineLayout(_device, PipelineLayout, null);
     }
 }

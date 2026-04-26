@@ -7,9 +7,9 @@ namespace NjulfFramework.Rendering.Memory;
 
 public class GpuMemoryAllocatorMine : IDisposable
 {
-    private readonly Vk _vk;
     private readonly Device _device;
     private readonly PhysicalDevice _physicalDevice;
+    private readonly Vk _vk;
 
     public GpuMemoryAllocatorMine(Vk vk, Device device, PhysicalDevice physicalDevice)
     {
@@ -18,9 +18,14 @@ public class GpuMemoryAllocatorMine : IDisposable
         _physicalDevice = physicalDevice;
     }
 
+    public void Dispose()
+    {
+        // Cleanup code when allocator is destroyed
+    }
+
     /// <summary>
-    /// Allocates a buffer on the GPU.
-    /// TODO: Integrate with Vulkan Memory Allocator for better management.
+    ///     Allocates a buffer on the GPU.
+    ///     TODO: Integrate with Vulkan Memory Allocator for better management.
     /// </summary>
     public unsafe (Buffer Buffer, DeviceMemory Memory) AllocateBuffer(
         ulong size,
@@ -57,7 +62,7 @@ public class GpuMemoryAllocatorMine : IDisposable
     }
 
     /// <summary>
-    /// Allocates an image on the GPU.
+    ///     Allocates an image on the GPU.
     /// </summary>
     public unsafe (Image Image, DeviceMemory Memory) AllocateImage(
         uint width,
@@ -128,10 +133,5 @@ public class GpuMemoryAllocatorMine : IDisposable
             _vk.DestroyImage(_device, image, null);
         if (memory.Handle != 0)
             _vk.FreeMemory(_device, memory, null);
-    }
-
-    public void Dispose()
-    {
-        // Cleanup code when allocator is destroyed
     }
 }

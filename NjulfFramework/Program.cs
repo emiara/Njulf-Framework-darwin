@@ -1,7 +1,6 @@
 ﻿using NjulfFramework.Rendering;
+using Silk.NET.Maths;
 using Silk.NET.Windowing;
-using System.Numerics;
-
 
 namespace NjulfFramework;
 
@@ -14,7 +13,7 @@ internal static class RendererExample
         var options = WindowOptions.DefaultVulkan with
         {
             Title = "YourFramework - Vulkan Triangle",
-            Size = new Silk.NET.Maths.Vector2D<int>(1920, 1080),
+            Size = new Vector2D<int>(1920, 1080),
             VSync = false,
             WindowBorder = WindowBorder.Fixed
         };

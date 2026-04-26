@@ -1,7 +1,5 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
-using System;
-
 namespace NjulfFramework.Rendering.Resources.Handles;
 
 public readonly struct TextureHandle(uint index, uint generation) : IEquatable<TextureHandle>

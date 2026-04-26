@@ -1,29 +1,27 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
-using Silk.NET.Vulkan;
+using System.Runtime.InteropServices;
 using NjulfFramework.Rendering.Shaders;
+using Silk.NET.Vulkan;
 
 namespace NjulfFramework.Rendering.Pipeline;
 
 /// <summary>
-/// Compute pipeline for tiled light culling.
-/// Follows the same pattern as GraphicsPipeline:
-/// 1. Compile GLSL to SPIR-V using ShaderCompiler
-/// 2. Create shader module from SPIR-V bytecode
-/// 3. Create pipeline layout with push constants
-/// 4. Create compute pipeline
+///     Compute pipeline for tiled light culling.
+///     Follows the same pattern as GraphicsPipeline:
+///     1. Compile GLSL to SPIR-V using ShaderCompiler
+///     2. Create shader module from SPIR-V bytecode
+///     3. Create pipeline layout with push constants
+///     4. Create compute pipeline
 /// </summary>
 public class ComputePipeline : IDisposable
 {
-    private readonly Vk _vk;
     private readonly Device _device;
-
-    public Silk.NET.Vulkan.Pipeline Pipeline { get; private set; }
-    public PipelineLayout PipelineLayout { get; private set; }
+    private readonly Vk _vk;
 
     /// <summary>
-    /// Create compute pipeline from GLSL source file.
-    /// Automatically compiles GLSL → SPIR-V using glslc.
+    ///     Create compute pipeline from GLSL source file.
+    ///     Automatically compiles GLSL → SPIR-V using glslc.
     /// </summary>
     public unsafe ComputePipeline(
         Vk vk,
@@ -77,7 +75,7 @@ public class ComputePipeline : IDisposable
                     SType = StructureType.PipelineShaderStageCreateInfo,
                     Stage = ShaderStageFlags.ComputeBit,
                     Module = shaderModule,
-                    PName = (byte*)System.Runtime.InteropServices.Marshal.StringToHGlobalAnsi("main")
+                    PName = (byte*)Marshal.StringToHGlobalAnsi("main")
                 };
 
                 var pipelineInfo = new ComputePipelineCreateInfo
@@ -109,6 +107,18 @@ public class ComputePipeline : IDisposable
         }
     }
 
+    public Silk.NET.Vulkan.Pipeline Pipeline { get; }
+    public PipelineLayout PipelineLayout { get; }
+
+    public unsafe void Dispose()
+    {
+        if (Pipeline.Handle != 0)
+            _vk.DestroyPipeline(_device, Pipeline, null);
+
+        if (PipelineLayout.Handle != 0)
+            _vk.DestroyPipelineLayout(_device, PipelineLayout, null);
+    }
+
     private unsafe ShaderModule CreateShaderModule(byte[] spirvBytecode)
     {
         fixed (byte* codePtr = spirvBytecode)
@@ -125,14 +135,5 @@ public class ComputePipeline : IDisposable
 
             return shaderModule;
         }
-    }
-
-    public unsafe void Dispose()
-    {
-        if (Pipeline.Handle != 0)
-            _vk.DestroyPipeline(_device, Pipeline, null);
-
-        if (PipelineLayout.Handle != 0)
-            _vk.DestroyPipelineLayout(_device, PipelineLayout, null);
     }
 }

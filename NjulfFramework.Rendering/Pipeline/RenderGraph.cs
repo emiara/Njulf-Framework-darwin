@@ -5,14 +5,14 @@ using Silk.NET.Vulkan;
 namespace NjulfFramework.Rendering.Pipeline;
 
 /// <summary>
-/// Simple render graph that executes a sequence of render passes.
-/// Each pass can read/write images in a dependency-free manner.
-/// For a production system, this would include explicit dependency tracking.
+///     Simple render graph that executes a sequence of render passes.
+///     Each pass can read/write images in a dependency-free manner.
+///     For a production system, this would include explicit dependency tracking.
 /// </summary>
 public class RenderGraph
 {
-    private readonly List<RenderGraphPass> _passes = new();
     private readonly string _name;
+    private readonly List<RenderGraphPass> _passes = new();
 
     public RenderGraph(string name = "RenderGraph")
     {
@@ -20,8 +20,13 @@ public class RenderGraph
     }
 
     /// <summary>
-    /// Add a render pass to the graph.
-    /// Passes execute in the order they are added.
+    ///     Get pass count for debugging.
+    /// </summary>
+    public int PassCount => _passes.Count;
+
+    /// <summary>
+    ///     Add a render pass to the graph.
+    ///     Passes execute in the order they are added.
     /// </summary>
     public void AddPass(RenderGraphPass pass)
     {
@@ -31,7 +36,7 @@ public class RenderGraph
     }
 
     /// <summary>
-    /// Remove all passes from the graph.
+    ///     Remove all passes from the graph.
     /// </summary>
     public void Clear()
     {
@@ -39,7 +44,7 @@ public class RenderGraph
     }
 
     /// <summary>
-    /// Execute all render passes in order.
+    ///     Execute all render passes in order.
     /// </summary>
     /// <param name="cmd">Command buffer to record passes into</param>
     /// <param name="ctx">Render context for frame data</param>
@@ -56,9 +61,4 @@ public class RenderGraph
                 throw;
             }
     }
-
-    /// <summary>
-    /// Get pass count for debugging.
-    /// </summary>
-    public int PassCount => _passes.Count;
 }

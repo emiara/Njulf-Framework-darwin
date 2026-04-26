@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.IO;
 using Silk.NET.Vulkan;
 using StbImageSharp;
 using Buffer = System.Buffer;
@@ -9,12 +7,12 @@ using Buffer = System.Buffer;
 namespace NjulfFramework.Rendering.Resources;
 
 /// <summary>
-/// Texture loading utility using STB Image
+///     Texture loading utility using STB Image
 /// </summary>
 public static class TextureLoader
 {
     /// <summary>
-    /// Load a 2D texture from file
+    ///     Load a 2D texture from file
     /// </summary>
     public static (byte[] Pixels, int Width, int Height, int Components) LoadTextureFromFile(
         string filePath, bool flipVertically = true)
@@ -58,7 +56,7 @@ public static class TextureLoader
     }
 
     /// <summary>
-    /// Get the appropriate Vulkan format for a given number of components
+    ///     Get the appropriate Vulkan format for a given number of components
     /// </summary>
     public static Format GetVulkanFormat(int components, bool srgb = false)
     {
@@ -73,7 +71,7 @@ public static class TextureLoader
     }
 
     /// <summary>
-    /// Determine if a texture should use sRGB format based on its type
+    ///     Determine if a texture should use sRGB format based on its type
     /// </summary>
     public static bool ShouldUseSRGB(string texturePath, string textureType)
     {
@@ -82,9 +80,7 @@ public static class TextureLoader
         if (textureType.Equals("baseColor", StringComparison.OrdinalIgnoreCase) ||
             textureType.Equals("albedo", StringComparison.OrdinalIgnoreCase) ||
             textureType.Equals("diffuse", StringComparison.OrdinalIgnoreCase))
-        {
             return true;
-        }
 
         // Check file extension as additional hint
         var extension = Path.GetExtension(texturePath)?.ToLower();

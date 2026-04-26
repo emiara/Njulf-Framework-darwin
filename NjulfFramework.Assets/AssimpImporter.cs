@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.IO;
-using System.Threading.Tasks;
 using Silk.NET.Assimp;
 using File = System.IO.File;
 
 namespace NjulfFramework.Assets;
 
 /// <summary>
-/// Assimp wrapper for model importing
+///     Assimp wrapper for model importing
 /// </summary>
 public class AssimpImporter : IDisposable
 {
@@ -17,7 +14,7 @@ public class AssimpImporter : IDisposable
     private IntPtr? _lastScenePtr; // Tracks the most recently imported scene
 
     /// <summary>
-    /// Constructor
+    ///     Constructor
     /// </summary>
     public AssimpImporter()
     {
@@ -25,7 +22,16 @@ public class AssimpImporter : IDisposable
     }
 
     /// <summary>
-    /// Import a scene asynchronously
+    ///     Dispose of the importer and free any pending scene
+    /// </summary>
+    public void Dispose()
+    {
+        FreeLastScene();
+        _assimp?.Dispose();
+    }
+
+    /// <summary>
+    ///     Import a scene asynchronously
     /// </summary>
     public Task<IntPtr> ImportSceneAsync(string filePath)
     {
@@ -56,7 +62,7 @@ public class AssimpImporter : IDisposable
     }
 
     /// <summary>
-    /// Free the last imported scene if it exists
+    ///     Free the last imported scene if it exists
     /// </summary>
     public void FreeLastScene()
     {
@@ -69,14 +75,5 @@ public class AssimpImporter : IDisposable
 
             _lastScenePtr = null;
         }
-    }
-
-    /// <summary>
-    /// Dispose of the importer and free any pending scene
-    /// </summary>
-    public void Dispose()
-    {
-        FreeLastScene();
-        _assimp?.Dispose();
     }
 }

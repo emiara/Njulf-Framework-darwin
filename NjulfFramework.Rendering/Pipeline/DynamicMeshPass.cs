@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 
+using System.Numerics;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.EXT;
-using System.Numerics;
-using NjulfFramework.Rendering.Data;
 
 namespace NjulfFramework.Rendering.Pipeline;
 
 public class DynamicMeshPass : RenderGraphPass
 {
-    private readonly Vk _vk;
+    private readonly Vector4 _clearColor;
     private readonly ExtMeshShader _meshShader;
     private readonly MeshPipeline _pipeline;
-    private readonly Vector4 _clearColor;
+    private readonly Vk _vk;
 
     public DynamicMeshPass(
         Vk vk,

@@ -1,46 +1,43 @@
 //SPDX-License-Identifier: MPL-2.0
 
 using System.Numerics;
-using Silk.NET.Vulkan;
-using Vma;
-using NjulfFramework.Rendering.Core;
-using NjulfFramework.Rendering.Resources;
 using NjulfFramework.Rendering.Data;
 using NjulfFramework.Rendering.Memory;
 using NjulfFramework.Rendering.Resources.Descriptors;
 using NjulfFramework.Rendering.Resources.Handles;
+using Silk.NET.Vulkan;
+using Vma;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace NjulfFramework.Rendering.Resources;
 
 /// <summary>
-/// Manages dynamic lights for forward+ rendering.
-/// Handles CPU-side light data and GPU uploads.
+///     Manages dynamic lights for forward+ rendering.
+///     Handles CPU-side light data and GPU uploads.
 /// </summary>
 public class LightManager : IDisposable
 {
+    private const ulong MaxLightCount = 1024;
+    private const ulong LightBufferSize = MaxLightCount * 48; // 48 bytes per light
     private readonly BufferManager _bufferManager;
-    private readonly Vk _vk;
     private readonly Device _device;
 
     /// <summary>
-    /// CPU-side light data, updated per-frame.
+    ///     GPU buffer containing all light data.
     /// </summary>
-    private List<GPULight> _lights = new();
+    private readonly BufferHandle _lightBuffer;
 
-    public uint LightBufferBindlessIndex { get; private set; }
+    private readonly Buffer _lightBufferVk;
 
     /// <summary>
-    /// GPU buffer containing all light data.
+    ///     CPU-side light data, updated per-frame.
     /// </summary>
-    private BufferHandle _lightBuffer;
+    private readonly List<GPULight> _lights = new();
 
-    private Buffer _lightBufferVk;
-    private const ulong MaxLightCount = 1024;
-    private const ulong LightBufferSize = MaxLightCount * 48; // 48 bytes per light
+    private readonly Vk _vk;
 
     /// <summary>
-    /// Initialize the light manager.
+    ///     Initialize the light manager.
     /// </summary>
     public LightManager(Vk vk, Device device, BufferManager bufferManager, BindlessDescriptorHeap bindlessHeap)
     {
@@ -66,8 +63,20 @@ public class LightManager : IDisposable
         Console.WriteLine($"✓ Light manager initialized (max {MaxLightCount} lights)");
     }
 
+    public uint LightBufferBindlessIndex { get; }
+
     /// <summary>
-    /// Get the GPU light buffer for bindless access.
+    ///     Get total light count.
+    /// </summary>
+    public uint LightCount => (uint)_lights.Count;
+
+    public void Dispose()
+    {
+        _lights.Clear();
+    }
+
+    /// <summary>
+    ///     Get the GPU light buffer for bindless access.
     /// </summary>
     public Buffer GetLightBuffer()
     {
@@ -75,12 +84,7 @@ public class LightManager : IDisposable
     }
 
     /// <summary>
-    /// Get total light count.
-    /// </summary>
-    public uint LightCount => (uint)_lights.Count;
-
-    /// <summary>
-    /// Add a point light to the scene.
+    ///     Add a point light to the scene.
     /// </summary>
     public void AddPointLight(Vector3 position, float radius, Vector3 color, float intensity)
     {
@@ -94,7 +98,7 @@ public class LightManager : IDisposable
     }
 
     /// <summary>
-    /// Remove all lights from the scene.
+    ///     Remove all lights from the scene.
     /// </summary>
     public void ClearLights()
     {
@@ -102,8 +106,8 @@ public class LightManager : IDisposable
     }
 
     /// <summary>
-    /// Upload all lights to GPU.
-    /// Must be called once per frame after CPU updates.
+    ///     Upload all lights to GPU.
+    ///     Must be called once per frame after CPU updates.
     /// </summary>
     public unsafe void UploadToGPU(CommandBuffer transferCmd, FrameUploadRing uploadRing)
     {
@@ -112,13 +116,10 @@ public class LightManager : IDisposable
 
         // Write lights to CPU staging buffer
         ulong srcOffset = 0;
-        unsafe
+        var lightArray = _lights.ToArray();
+        fixed (GPULight* ptr = lightArray)
         {
-            var lightArray = _lights.ToArray();
-            fixed (GPULight* ptr = lightArray)
-            {
-                uploadRing.WriteData(new ReadOnlySpan<GPULight>(ptr, _lights.Count), out srcOffset);
-            }
+            uploadRing.WriteData(new ReadOnlySpan<GPULight>(ptr, _lights.Count), out srcOffset);
         }
 
         // Record copy from staging to GPU buffer
@@ -134,7 +135,7 @@ public class LightManager : IDisposable
     }
 
     /// <summary>
-    /// Get a light by index (for CPU-side access).
+    ///     Get a light by index (for CPU-side access).
     /// </summary>
     public GPULight? GetLight(int index)
     {
@@ -144,15 +145,10 @@ public class LightManager : IDisposable
     }
 
     /// <summary>
-    /// Get all lights (for debugging).
+    ///     Get all lights (for debugging).
     /// </summary>
     public IReadOnlyList<GPULight> GetAllLights()
     {
         return _lights.AsReadOnly();
-    }
-
-    public void Dispose()
-    {
-        _lights.Clear();
     }
 }

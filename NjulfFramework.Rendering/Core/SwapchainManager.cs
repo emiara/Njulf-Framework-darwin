@@ -8,28 +8,17 @@ namespace NjulfFramework.Rendering.Core;
 
 public class SwapchainManager : IDisposable
 {
-    private readonly Vk _vk;
     private readonly Device _device;
-    private readonly PhysicalDevice _physicalDevice;
     private readonly Instance _instance;
-    private readonly SurfaceKHR _surface;
-    private readonly Queue _presentQueue;
 
     private readonly KhrSurface _khrSurface;
     private readonly KhrSwapchain _khrSwapchain;
+    private readonly PhysicalDevice _physicalDevice;
+    private readonly Queue _presentQueue;
+    private readonly SurfaceKHR _surface;
+    private readonly Vk _vk;
 
     private SwapchainKHR _swapchain;
-    private Image[] _swapchainImages = null!;
-    private ImageView[] _swapchainImageViews = null!;
-    private Extent2D _swapchainExtent;
-    private Format _swapchainImageFormat;
-
-    public SwapchainKHR Swapchain => _swapchain;
-    public Image[] SwapchainImages => _swapchainImages;
-    public ImageView[] SwapchainImageViews => _swapchainImageViews;
-    public Extent2D SwapchainExtent => _swapchainExtent;
-    public Format SwapchainImageFormat => _swapchainImageFormat;
-    public uint SwapchainImageCount => (uint)_swapchainImages.Length;
 
     public SwapchainManager(
         Vk vk,
@@ -59,14 +48,32 @@ public class SwapchainManager : IDisposable
         CreateImageViews();
     }
 
+    public SwapchainKHR Swapchain => _swapchain;
+    public Image[] SwapchainImages { get; private set; } = null!;
+
+    public ImageView[] SwapchainImageViews { get; private set; } = null!;
+
+    public Extent2D SwapchainExtent { get; private set; }
+
+    public Format SwapchainImageFormat { get; private set; }
+
+    public uint SwapchainImageCount => (uint)SwapchainImages.Length;
+
+    public unsafe void Dispose()
+    {
+        foreach (var imageView in SwapchainImageViews) _vk.DestroyImageView(_device, imageView, null);
+
+        if (_swapchain.Handle != 0) _khrSwapchain!.DestroySwapchain(_device, _swapchain, null);
+    }
+
     private unsafe void CreateSwapchain(uint width, uint height)
     {
         var surfaceCapabilities = QuerySurfaceCapabilities();
         var surfaceFormat = ChooseSurfaceFormat();
         var presentMode = ChoosePresentMode();
 
-        _swapchainExtent = ChooseSwapExtent(surfaceCapabilities, width, height);
-        _swapchainImageFormat = surfaceFormat.Format;
+        SwapchainExtent = ChooseSwapExtent(surfaceCapabilities, width, height);
+        SwapchainImageFormat = surfaceFormat.Format;
 
         var imageCount = surfaceCapabilities.MinImageCount + 1;
         if (surfaceCapabilities.MaxImageCount > 0 && imageCount > surfaceCapabilities.MaxImageCount)
@@ -79,7 +86,7 @@ public class SwapchainManager : IDisposable
             MinImageCount = imageCount,
             ImageFormat = surfaceFormat.Format,
             ImageColorSpace = surfaceFormat.ColorSpace,
-            ImageExtent = _swapchainExtent,
+            ImageExtent = SwapchainExtent,
             ImageArrayLayers = 1,
             ImageUsage = ImageUsageFlags.ColorAttachmentBit,
             PreTransform = surfaceCapabilities.CurrentTransform,
@@ -104,8 +111,8 @@ public class SwapchainManager : IDisposable
         uint imageCount = 0;
         _khrSwapchain!.GetSwapchainImages(_device, _swapchain, &imageCount, null);
 
-        _swapchainImages = new Image[imageCount];
-        fixed (Image* imagesPtr = _swapchainImages)
+        SwapchainImages = new Image[imageCount];
+        fixed (Image* imagesPtr = SwapchainImages)
         {
             _khrSwapchain!.GetSwapchainImages(_device, _swapchain, &imageCount, imagesPtr);
         }
@@ -113,16 +120,16 @@ public class SwapchainManager : IDisposable
 
     private unsafe void CreateImageViews()
     {
-        _swapchainImageViews = new ImageView[_swapchainImages.Length];
+        SwapchainImageViews = new ImageView[SwapchainImages.Length];
 
-        for (var i = 0; i < _swapchainImages.Length; i++)
+        for (var i = 0; i < SwapchainImages.Length; i++)
         {
             var createInfo = new ImageViewCreateInfo
             {
                 SType = StructureType.ImageViewCreateInfo,
-                Image = _swapchainImages[i],
+                Image = SwapchainImages[i],
                 ViewType = ImageViewType.Type2D,
-                Format = _swapchainImageFormat,
+                Format = SwapchainImageFormat,
                 Components = new ComponentMapping
                 {
                     R = ComponentSwizzle.Identity,
@@ -140,7 +147,7 @@ public class SwapchainManager : IDisposable
                 }
             };
 
-            if (_vk.CreateImageView(_device, &createInfo, null, out _swapchainImageViews[i]) != Result.Success)
+            if (_vk.CreateImageView(_device, &createInfo, null, out SwapchainImageViews[i]) != Result.Success)
                 throw new Exception($"Failed to create image view {i}");
         }
     }
@@ -200,12 +207,5 @@ public class SwapchainManager : IDisposable
             Height = Math.Max(capabilities.MinImageExtent.Height,
                 Math.Min(capabilities.MaxImageExtent.Height, height))
         };
-    }
-
-    public unsafe void Dispose()
-    {
-        foreach (var imageView in _swapchainImageViews) _vk.DestroyImageView(_device, imageView, null);
-
-        if (_swapchain.Handle != 0) _khrSwapchain!.DestroySwapchain(_device, _swapchain, null);
     }
 }

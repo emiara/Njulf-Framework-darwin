@@ -10,27 +10,27 @@ using Buffer = Silk.NET.Vulkan.Buffer;
 namespace NjulfFramework.Rendering.Memory;
 
 /// <summary>
-/// Per-frame CPU-visible upload buffers backed by VMA.
-/// Used as a ring so the CPU can write every frame without stalling the GPU.
+///     Per-frame CPU-visible upload buffers backed by VMA.
+///     Used as a ring so the CPU can write every frame without stalling the GPU.
 /// </summary>
 public sealed class FrameUploadRing : IDisposable
 {
-    private readonly BufferManager _bufferManager;
-    private readonly BufferHandle[] _uploadBuffers;
-    private readonly IntPtr[] _cpuMappings;
-    private readonly ulong[] _writeOffsets;
-    private uint _frameIndex;
-
     /// <summary>
-    /// Number of frames in the ring. 3 is a good default (triple buffering).
+    ///     Number of frames in the ring. 3 is a good default (triple buffering).
     /// </summary>
     private const uint MaxFrames = 3;
 
     /// <summary>
-    /// Size of each per-frame upload buffer in bytes.
-    /// Adjust when you know your real scene data size.
+    ///     Size of each per-frame upload buffer in bytes.
+    ///     Adjust when you know your real scene data size.
     /// </summary>
     private const ulong UploadSize = 256 * 1024 * 1024; // 256 MB
+
+    private readonly BufferManager _bufferManager;
+    private readonly IntPtr[] _cpuMappings;
+    private readonly BufferHandle[] _uploadBuffers;
+    private readonly ulong[] _writeOffsets;
+    private uint _frameIndex;
 
     public FrameUploadRing(BufferManager bufferManager)
     {
@@ -58,23 +58,41 @@ public sealed class FrameUploadRing : IDisposable
     }
 
     /// <summary>
-    /// Current frame slot index in the ring.
+    ///     Current frame slot index in the ring.
     /// </summary>
     private uint CurrentFrameIndex => _frameIndex % MaxFrames;
 
     /// <summary>
-    /// Write a contiguous block of POD data into the current frame's upload buffer.
-    /// This writes at the beginning of the buffer; higher-level code is responsible
-    /// for tracking offsets if multiple writes are needed.
+    ///     Get the VkBuffer handle for the current frame's upload buffer.
+    ///     Use this as the src buffer in vkCmdCopyBuffer / vkCmdCopyBufferToImage commands.
     /// </summary>
-    public unsafe void WriteData<T>(ReadOnlySpan<T> data) where T : unmanaged
+    public Buffer CurrentUploadBuffer
+        => _bufferManager.GetBuffer(_uploadBuffers[CurrentFrameIndex]);
+
+    public void Dispose()
+    {
+        for (var i = 0; i < _uploadBuffers.Length; i++)
+        {
+            if (_uploadBuffers[i].IsValid) _bufferManager.DestroyBuffer(_uploadBuffers[i]);
+
+            _cpuMappings[i] = IntPtr.Zero;
+            _writeOffsets[i] = 0;
+        }
+    }
+
+    /// <summary>
+    ///     Write a contiguous block of POD data into the current frame's upload buffer.
+    ///     This writes at the beginning of the buffer; higher-level code is responsible
+    ///     for tracking offsets if multiple writes are needed.
+    /// </summary>
+    public void WriteData<T>(ReadOnlySpan<T> data) where T : unmanaged
     {
         WriteData(data, out _);
     }
 
     /// <summary>
-    /// Write a contiguous block of POD data into the current frame's upload buffer,
-    /// appending to the current write cursor. Returns the byte offset of the write.
+    ///     Write a contiguous block of POD data into the current frame's upload buffer,
+    ///     appending to the current write cursor. Returns the byte offset of the write.
     /// </summary>
     public unsafe void WriteData<T>(ReadOnlySpan<T> data, out ulong dstOffset) where T : unmanaged
     {
@@ -104,31 +122,13 @@ public sealed class FrameUploadRing : IDisposable
     }
 
     /// <summary>
-    /// Get the VkBuffer handle for the current frame's upload buffer.
-    /// Use this as the src buffer in vkCmdCopyBuffer / vkCmdCopyBufferToImage commands.
-    /// </summary>
-    public Buffer CurrentUploadBuffer
-        => _bufferManager.GetBuffer(_uploadBuffers[CurrentFrameIndex]);
-
-    /// <summary>
-    /// Advance to the next frame in the ring.
-    /// Call this once per frame after all transfers using the current upload buffer are submitted.
+    ///     Advance to the next frame in the ring.
+    ///     Call this once per frame after all transfers using the current upload buffer are submitted.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void NextFrame()
     {
         _frameIndex++;
         _writeOffsets[CurrentFrameIndex] = 0;
-    }
-
-    public void Dispose()
-    {
-        for (var i = 0; i < _uploadBuffers.Length; i++)
-        {
-            if (_uploadBuffers[i].IsValid) _bufferManager.DestroyBuffer(_uploadBuffers[i]);
-
-            _cpuMappings[i] = IntPtr.Zero;
-            _writeOffsets[i] = 0;
-        }
     }
 }

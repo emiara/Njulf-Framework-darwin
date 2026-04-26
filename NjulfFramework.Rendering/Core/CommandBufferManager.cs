@@ -6,21 +6,16 @@ namespace NjulfFramework.Rendering.Core;
 
 public class CommandBufferManager : IDisposable
 {
-    private readonly VulkanContext _vulkanContext;
-    private readonly Vk _vk;
     private readonly Device _device;
     private readonly uint _queueFamilyIndex;
+    private readonly Vk _vk;
+    private readonly VulkanContext _vulkanContext;
 
     // Graphics command pool + buffers
     private CommandPool _commandPool;
-    private CommandBuffer[] _commandBuffers = null!;
-
-    public CommandPool CommandPool => _commandPool;
-    public CommandBuffer[] CommandBuffers => _commandBuffers;
 
     // Transfer command pool + buffers
     private CommandPool _transferCommandPool;
-    public CommandBuffer[] TransferCommandBuffers { get; private set; }
 
     public CommandBufferManager(VulkanContext vulkanContext, uint queueFamilyIndex, uint bufferCount = 2)
     {
@@ -35,6 +30,21 @@ public class CommandBufferManager : IDisposable
 
         // Create transfer command pool + buffers
         CreateTransferCommandPool(bufferCount);
+    }
+
+    public CommandPool CommandPool => _commandPool;
+    public CommandBuffer[] CommandBuffers { get; private set; } = null!;
+
+    public CommandBuffer[] TransferCommandBuffers { get; private set; }
+
+
+    public unsafe void Dispose()
+    {
+        // Destroy graphics command pool (also frees graphics command buffers)
+        if (_commandPool.Handle != 0) _vk.DestroyCommandPool(_device, _commandPool, null);
+
+        // Destroy transfer command pool (also frees transfer command buffers)
+        if (_transferCommandPool.Handle != 0) _vk.DestroyCommandPool(_device, _transferCommandPool, null);
     }
 
 
@@ -53,7 +63,7 @@ public class CommandBufferManager : IDisposable
 
     private unsafe void AllocateCommandBuffers(uint count)
     {
-        _commandBuffers = new CommandBuffer[count];
+        CommandBuffers = new CommandBuffer[count];
 
         var allocInfo = new CommandBufferAllocateInfo
         {
@@ -63,7 +73,7 @@ public class CommandBufferManager : IDisposable
             CommandBufferCount = count
         };
 
-        fixed (CommandBuffer* buffersPtr = _commandBuffers)
+        fixed (CommandBuffer* buffersPtr = CommandBuffers)
         {
             if (_vk.AllocateCommandBuffers(_device, &allocInfo, buffersPtr) != Result.Success)
                 throw new Exception("Failed to allocate graphics command buffers");
@@ -129,15 +139,5 @@ public class CommandBufferManager : IDisposable
     public void ResetCommandBuffer(CommandBuffer commandBuffer)
     {
         _vk.ResetCommandBuffer(commandBuffer, CommandBufferResetFlags.ReleaseResourcesBit);
-    }
-
-
-    public unsafe void Dispose()
-    {
-        // Destroy graphics command pool (also frees graphics command buffers)
-        if (_commandPool.Handle != 0) _vk.DestroyCommandPool(_device, _commandPool, null);
-
-        // Destroy transfer command pool (also frees transfer command buffers)
-        if (_transferCommandPool.Handle != 0) _vk.DestroyCommandPool(_device, _transferCommandPool, null);
     }
 }

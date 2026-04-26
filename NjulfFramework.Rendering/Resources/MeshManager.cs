@@ -1,31 +1,29 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
-using Silk.NET.Vulkan;
-using NjulfFramework.Rendering.Data;
 using NjulfFramework.Rendering.Memory;
+using NjulfFramework.Rendering.RenderingData;
 using NjulfFramework.Rendering.Resources.Handles;
+using Silk.NET.Vulkan;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace NjulfFramework.Rendering.Resources;
 
 /// <summary>
-/// Refactored MeshManager using GPU-driven consolidated buffers.
-/// 
-/// Two-phase workflow:
-/// 1. Build phase: Register meshes, call Finalize()
-/// 2. Upload phase: Upload mesh data to GPU via FrameUploadRing
-/// 
-/// Replaces per-mesh vertex/index buffer creation with a single consolidated buffer approach.
+///     Refactored MeshManager using GPU-driven consolidated buffers.
+///     Two-phase workflow:
+///     1. Build phase: Register meshes, call Finalize()
+///     2. Upload phase: Upload mesh data to GPU via FrameUploadRing
+///     Replaces per-mesh vertex/index buffer creation with a single consolidated buffer approach.
 /// </summary>
 public class MeshManager : IDisposable
 {
-    private readonly Vk _vk;
-    private readonly Device _device;
     private readonly BufferManager _bufferManager;
+    private readonly Device _device;
 
-    private MeshBuffer _meshBuffer;
-    private bool _finalized = false;
-    private HashSet<Data.RenderingData.Mesh> _uploadedMeshes = new();
+    private readonly MeshBuffer _meshBuffer;
+    private readonly HashSet<Data.RenderingData.Mesh> _uploadedMeshes = new();
+    private readonly Vk _vk;
+    private bool _finalized;
 
     public MeshManager(Vk vk, Device device, BufferManager bufferManager)
     {
@@ -36,8 +34,14 @@ public class MeshManager : IDisposable
         _meshBuffer = new MeshBuffer(bufferManager, vk, device);
     }
 
+    public void Dispose()
+    {
+        _meshBuffer?.Dispose();
+        _uploadedMeshes.Clear();
+    }
+
     /// <summary>
-    /// Register a mesh with the consolidated buffer (before finalization).
+    ///     Register a mesh with the consolidated buffer (before finalization).
     /// </summary>
     public void RegisterMesh(Data.RenderingData.Mesh mesh)
     {
@@ -51,8 +55,8 @@ public class MeshManager : IDisposable
     }
 
     /// <summary>
-    /// Finalize the mesh buffer after all meshes are registered.
-    /// Allocates GPU memory for consolidated buffers.
+    ///     Finalize the mesh buffer after all meshes are registered.
+    ///     Allocates GPU memory for consolidated buffers.
     /// </summary>
     public void Finalize()
     {
@@ -65,8 +69,8 @@ public class MeshManager : IDisposable
     }
 
     /// <summary>
-    /// Get or create mesh GPU data (returns cached offset info).
-    /// Call after Finalize().
+    ///     Get or create mesh GPU data (returns cached offset info).
+    ///     Call after Finalize().
     /// </summary>
     public MeshBuffer.MeshEntry GetOrCreateMeshGpu(Data.RenderingData.Mesh mesh)
     {
@@ -77,8 +81,8 @@ public class MeshManager : IDisposable
     }
 
     /// <summary>
-    /// Upload a single mesh's data to GPU.
-    /// Typically called once per mesh during load phase.
+    ///     Upload a single mesh's data to GPU.
+    ///     Typically called once per mesh during load phase.
     /// </summary>
     public void UploadMeshToGPU(Data.RenderingData.Mesh mesh, CommandBuffer transferCmd, FrameUploadRing uploadRing)
     {
@@ -93,7 +97,7 @@ public class MeshManager : IDisposable
     }
 
     /// <summary>
-    /// Bind consolidated vertex and index buffers.
+    ///     Bind consolidated vertex and index buffers.
     /// </summary>
     public void BindMeshBuffers(CommandBuffer cmd)
     {
@@ -101,7 +105,7 @@ public class MeshManager : IDisposable
     }
 
     /// <summary>
-    /// Draw a mesh using consolidated buffers.
+    ///     Draw a mesh using consolidated buffers.
     /// </summary>
     public void DrawMesh(CommandBuffer cmd, Data.RenderingData.Mesh mesh)
     {
@@ -109,15 +113,15 @@ public class MeshManager : IDisposable
     }
 
     /// <summary>
-    /// Get GPU mesh data struct for scene buffer population.
+    ///     Get GPU mesh data struct for scene buffer population.
     /// </summary>
-    public RenderingData.GPUMeshData GetGPUMeshData(Data.RenderingData.Mesh mesh)
+    public GPUMeshData GetGPUMeshData(Data.RenderingData.Mesh mesh)
     {
         return _meshBuffer.GetGPUMeshData(mesh);
     }
 
     /// <summary>
-    /// Get consolidated buffers for bindless registration.
+    ///     Get consolidated buffers for bindless registration.
     /// </summary>
     public (BufferHandle VertexHandle, BufferHandle IndexHandle) GetMeshBufferHandles()
     {
@@ -125,7 +129,7 @@ public class MeshManager : IDisposable
     }
 
     /// <summary>
-    /// Get consolidated buffer objects.
+    ///     Get consolidated buffer objects.
     /// </summary>
     public (Buffer VertexBuffer, Buffer IndexBuffer) GetMeshBuffers()
     {
@@ -137,11 +141,5 @@ public class MeshManager : IDisposable
     {
         return (_meshBuffer.MeshletBuffer, _meshBuffer.MeshletVertexIndicesBuffer,
             _meshBuffer.MeshletTriangleIndicesBuffer);
-    }
-
-    public void Dispose()
-    {
-        _meshBuffer?.Dispose();
-        _uploadedMeshes.Clear();
     }
 }

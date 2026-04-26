@@ -1,29 +1,18 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
-using Vma;
+using NjulfFramework.Rendering.Resources.Handles;
 using Silk.NET.Vulkan;
-using System;
-using System.Collections.Generic;
+using Vma;
 
 namespace NjulfFramework.Rendering.Resources;
 
 public sealed unsafe class TextureManager : IDisposable
 {
-    private readonly Vk _vk;
-    private readonly Device _device;
     private readonly Allocator* _allocator;
-
-    private sealed class ImageEntry
-    {
-        public Image Handle;
-        public ImageView View;
-        public Allocation* Allocation;
-        public uint Width;
-        public uint Height;
-        public Format Format;
-    }
+    private readonly Device _device;
 
     private readonly Dictionary<uint, ImageEntry> _images = new();
+    private readonly Vk _vk;
     private uint _nextId = 1;
 
     public TextureManager(Vk vk, Device device, Allocator* allocator)
@@ -33,11 +22,22 @@ public sealed unsafe class TextureManager : IDisposable
         _allocator = allocator;
     }
 
+    public void Dispose()
+    {
+        foreach (var (_, entry) in _images)
+        {
+            _vk.DestroyImageView(_device, entry.View, null);
+            Apis.DestroyImage(_allocator, entry.Handle, entry.Allocation);
+        }
+
+        _images.Clear();
+    }
+
     /// <summary>
-    /// Allocate a new GPU image/texture.
-    /// Do NOT use Mapped flag for images — that's only for buffers.
+    ///     Allocate a new GPU image/texture.
+    ///     Do NOT use Mapped flag for images — that's only for buffers.
     /// </summary>
-    public Handles.TextureHandle AllocateTexture(
+    public TextureHandle AllocateTexture(
         uint width,
         uint height,
         Format format,
@@ -136,15 +136,15 @@ public sealed unsafe class TextureManager : IDisposable
             Format = format
         };
 
-        return new Handles.TextureHandle(id, 1);
+        return new TextureHandle(id, 1);
     }
 
 
     /// <summary>
-    /// Allocate a texture with initial data from a staging buffer.
-    /// The caller is responsible for the staging buffer and copy commands.
+    ///     Allocate a texture with initial data from a staging buffer.
+    ///     The caller is responsible for the staging buffer and copy commands.
     /// </summary>
-    public Handles.TextureHandle AllocateTextureWithData(
+    public TextureHandle AllocateTextureWithData(
         uint width,
         uint height,
         Format format,
@@ -161,28 +161,28 @@ public sealed unsafe class TextureManager : IDisposable
         return handle;
     }
 
-    public Image GetImage(Handles.TextureHandle handle)
+    public Image GetImage(TextureHandle handle)
     {
         if (!_images.TryGetValue(handle.Index, out var entry))
             throw new InvalidOperationException($"Texture handle {handle} not found");
         return entry.Handle;
     }
 
-    public ImageView GetImageView(Handles.TextureHandle handle)
+    public ImageView GetImageView(TextureHandle handle)
     {
         if (!_images.TryGetValue(handle.Index, out var entry))
             throw new InvalidOperationException($"Texture handle {handle} not found");
         return entry.View;
     }
 
-    public (uint Width, uint Height) GetTextureSize(Handles.TextureHandle handle)
+    public (uint Width, uint Height) GetTextureSize(TextureHandle handle)
     {
         if (!_images.TryGetValue(handle.Index, out var entry))
             throw new InvalidOperationException($"Texture handle {handle} not found");
         return (entry.Width, entry.Height);
     }
 
-    public Format GetTextureFormat(Handles.TextureHandle handle)
+    public Format GetTextureFormat(TextureHandle handle)
     {
         if (!_images.TryGetValue(handle.Index, out var entry))
             throw new InvalidOperationException($"Texture handle {handle} not found");
@@ -190,9 +190,9 @@ public sealed unsafe class TextureManager : IDisposable
     }
 
     /// <summary>
-    /// Free a texture handle. The handle becomes invalid after this.
+    ///     Free a texture handle. The handle becomes invalid after this.
     /// </summary>
-    public void FreeTexture(Handles.TextureHandle handle)
+    public void FreeTexture(TextureHandle handle)
     {
         if (!_images.Remove(handle.Index, out var entry))
             return;
@@ -202,7 +202,7 @@ public sealed unsafe class TextureManager : IDisposable
     }
 
     /// <summary>
-    /// Determine the correct aspect mask for a given image format.
+    ///     Determine the correct aspect mask for a given image format.
     /// </summary>
     private static ImageAspectFlags GetAspectMask(Format format)
     {
@@ -230,14 +230,13 @@ public sealed unsafe class TextureManager : IDisposable
         };
     }
 
-    public void Dispose()
+    private sealed class ImageEntry
     {
-        foreach (var (_, entry) in _images)
-        {
-            _vk.DestroyImageView(_device, entry.View, null);
-            Apis.DestroyImage(_allocator, entry.Handle, entry.Allocation);
-        }
-
-        _images.Clear();
+        public Allocation* Allocation;
+        public Format Format;
+        public Image Handle;
+        public uint Height;
+        public ImageView View;
+        public uint Width;
     }
 }

@@ -1,8 +1,7 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
-using Silk.NET.Vulkan;
-using System;
 using NjulfFramework.Rendering.Resources.Handles;
+using Silk.NET.Vulkan;
 using Vma;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
@@ -10,18 +9,10 @@ namespace NjulfFramework.Rendering.Resources;
 
 public sealed unsafe class BufferManager : IDisposable
 {
-    private readonly Vk _vk;
     private readonly Allocator* _allocator;
 
-    private sealed class BufferEntry
-    {
-        public Buffer Handle;
-        public Allocation* Allocation;
-        public ulong Size;
-        public IntPtr MappedData;
-    }
-
     private readonly Dictionary<uint, BufferEntry> _buffers = new();
+    private readonly Vk _vk;
     private uint _nextId = 1;
 
     public BufferManager(Vk vk, Allocator* allocator)
@@ -30,8 +21,14 @@ public sealed unsafe class BufferManager : IDisposable
         _allocator = allocator;
     }
 
+    public void Dispose()
+    {
+        foreach (var (_, entry) in _buffers) Apis.DestroyBuffer(_allocator, entry.Handle, entry.Allocation);
+        _buffers.Clear();
+    }
+
     /// <summary>
-    /// Allocate a new GPU buffer.
+    ///     Allocate a new GPU buffer.
     /// </summary>
     public BufferHandle AllocateBuffer(
         ulong size,
@@ -122,8 +119,8 @@ public sealed unsafe class BufferManager : IDisposable
     }
 
     /// <summary>
-    /// Get device address for ray tracing or GPU-driven submission.
-    /// Requires BufferUsageFlags.ShaderDeviceAddress set at creation time.
+    ///     Get device address for ray tracing or GPU-driven submission.
+    ///     Requires BufferUsageFlags.ShaderDeviceAddress set at creation time.
     /// </summary>
     public ulong GetBufferDeviceAddress(BufferHandle handle)
     {
@@ -137,7 +134,7 @@ public sealed unsafe class BufferManager : IDisposable
     }
 
     /// <summary>
-    /// Get mapped CPU pointer for writing (buffer must be allocated with Mapped flag).
+    ///     Get mapped CPU pointer for writing (buffer must be allocated with Mapped flag).
     /// </summary>
     public IntPtr GetMappedPointer(BufferHandle handle)
     {
@@ -146,13 +143,13 @@ public sealed unsafe class BufferManager : IDisposable
 
         if (entry.MappedData == default)
             throw new InvalidOperationException(
-                $"Buffer was not allocated with Mapped flag");
+                "Buffer was not allocated with Mapped flag");
 
         return entry.MappedData;
     }
 
     /// <summary>
-    /// Write data to a mapped buffer (CPU-side).
+    ///     Write data to a mapped buffer (CPU-side).
     /// </summary>
     public void WriteData<T>(BufferHandle handle, ReadOnlySpan<T> data)
         where T : unmanaged
@@ -175,7 +172,7 @@ public sealed unsafe class BufferManager : IDisposable
     }
 
     /// <summary>
-    /// Flush a mapped buffer range to GPU (needed for non-coherent memory).
+    ///     Flush a mapped buffer range to GPU (needed for non-coherent memory).
     /// </summary>
     public void FlushBuffer(BufferHandle handle, ulong offset = 0, ulong size = ulong.MaxValue)
     {
@@ -185,7 +182,7 @@ public sealed unsafe class BufferManager : IDisposable
     }
 
     /// <summary>
-    /// Invalidate a mapped buffer range (reading from GPU).
+    ///     Invalidate a mapped buffer range (reading from GPU).
     /// </summary>
     public void InvalidateBuffer(BufferHandle handle, ulong offset = 0, ulong size = ulong.MaxValue)
     {
@@ -195,7 +192,7 @@ public sealed unsafe class BufferManager : IDisposable
     }
 
     /// <summary>
-    /// Free a buffer handle. The handle becomes invalid after this.
+    ///     Free a buffer handle. The handle becomes invalid after this.
     /// </summary>
     public void FreeBuffer(BufferHandle handle)
     {
@@ -217,9 +214,11 @@ public sealed unsafe class BufferManager : IDisposable
         }
     }
 
-    public void Dispose()
+    private sealed class BufferEntry
     {
-        foreach (var (_, entry) in _buffers) Apis.DestroyBuffer(_allocator, entry.Handle, entry.Allocation);
-        _buffers.Clear();
+        public Allocation* Allocation;
+        public Buffer Handle;
+        public IntPtr MappedData;
+        public ulong Size;
     }
 }

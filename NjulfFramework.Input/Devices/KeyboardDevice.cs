@@ -3,7 +3,7 @@ using Silk.NET.Input;
 namespace NjulfFramework.Input.Devices;
 
 /// <summary>
-/// Handles keyboard input including key states and modifiers.
+///     Handles keyboard input including key states and modifiers.
 /// </summary>
 public class KeyboardDevice
 {
@@ -12,7 +12,7 @@ public class KeyboardDevice
     private readonly Dictionary<int, bool> _previousKeyStates = new();
 
     /// <summary>
-    /// Creates a new KeyboardDevice instance.
+    ///     Creates a new KeyboardDevice instance.
     /// </summary>
     public KeyboardDevice(IKeyboard keyboard)
     {
@@ -20,7 +20,7 @@ public class KeyboardDevice
     }
 
     /// <summary>
-    /// Gets whether a key is currently pressed.
+    ///     Gets whether a key is currently pressed.
     /// </summary>
     public bool IsKeyPressed(int keyCode)
     {
@@ -28,7 +28,7 @@ public class KeyboardDevice
     }
 
     /// <summary>
-    /// Gets whether a key was just pressed this frame.
+    ///     Gets whether a key was just pressed this frame.
     /// </summary>
     public bool WasKeyPressed(int keyCode)
     {
@@ -38,7 +38,7 @@ public class KeyboardDevice
     }
 
     /// <summary>
-    /// Gets whether a key was just released this frame.
+    ///     Gets whether a key was just released this frame.
     /// </summary>
     public bool WasKeyReleased(int keyCode)
     {
@@ -48,7 +48,7 @@ public class KeyboardDevice
     }
 
     /// <summary>
-    /// Updates the key states from the underlying keyboard device.
+    ///     Updates the key states from the underlying keyboard device.
     /// </summary>
     public void Update()
     {
@@ -64,7 +64,8 @@ public class KeyboardDevice
                 _keyStates[i] = false;
                 continue;
             }
-            bool isPressed = _keyboard.IsKeyPressed((Key)i);
+
+            var isPressed = _keyboard.IsKeyPressed((Key)i);
             _keyStates[i] = isPressed;
         }
     }

@@ -1,33 +1,29 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
 using Silk.NET.Vulkan;
-using System;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace NjulfFramework.Rendering.Resources.Descriptors;
 
 /// <summary>
-/// Bindless descriptor heap with single large binding per set (Solution 1).
-/// Pool capacity: 65536 descriptors per type
+///     Bindless descriptor heap with single large binding per set (Solution 1).
+///     Pool capacity: 65536 descriptors per type
 /// </summary>
 public sealed class BindlessDescriptorHeap : IDisposable
 {
     private const uint MaxBindlessBuffers = 65536;
     private const uint MaxBindlessTextures = 65536;
 
-    private readonly Vk _vk;
+    private readonly DescriptorAllocator _bufferAllocator;
     private readonly Device _device;
+    private readonly DescriptorAllocator _textureAllocator;
+
+    private readonly Vk _vk;
 
     private DescriptorPool _bufferPool;
-    private DescriptorPool _texturePool;
     private DescriptorSet _bufferSet;
+    private DescriptorPool _texturePool;
     private DescriptorSet _textureSet;
-
-    public DescriptorSet BufferSet => _bufferSet;
-    public DescriptorSet TextureSet => _textureSet;
-
-    private readonly DescriptorAllocator _bufferAllocator;
-    private readonly DescriptorAllocator _textureAllocator;
 
     public BindlessDescriptorHeap(Vk vk, Device device, DescriptorSetLayouts layouts)
     {
@@ -39,6 +35,24 @@ public sealed class BindlessDescriptorHeap : IDisposable
 
         CreateDescriptorPools();
         AllocateDescriptorSets(layouts);
+    }
+
+    public DescriptorSet BufferSet => _bufferSet;
+    public DescriptorSet TextureSet => _textureSet;
+
+    public unsafe void Dispose()
+    {
+        if (_bufferPool.Handle != 0)
+        {
+            _vk.DestroyDescriptorPool(_device, _bufferPool, null);
+            _bufferPool = default;
+        }
+
+        if (_texturePool.Handle != 0)
+        {
+            _vk.DestroyDescriptorPool(_device, _texturePool, null);
+            _texturePool = default;
+        }
     }
 
     private unsafe void CreateDescriptorPools()
@@ -203,20 +217,5 @@ public sealed class BindlessDescriptorHeap : IDisposable
         };
 
         _vk.UpdateDescriptorSets(_device, 1, &write, 0, null);
-    }
-
-    public unsafe void Dispose()
-    {
-        if (_bufferPool.Handle != 0)
-        {
-            _vk.DestroyDescriptorPool(_device, _bufferPool, null);
-            _bufferPool = default;
-        }
-
-        if (_texturePool.Handle != 0)
-        {
-            _vk.DestroyDescriptorPool(_device, _texturePool, null);
-            _texturePool = default;
-        }
     }
 }

@@ -4,19 +4,18 @@ using Silk.NET.Maths;
 namespace NjulfFramework.Input.Devices;
 
 /// <summary>
-/// Handles mouse input including position, buttons, and wheel.
+///     Handles mouse input including position, buttons, and wheel.
 /// </summary>
 public class MouseDevice
 {
-    private readonly IMouse _mouse;
     private readonly Dictionary<int, bool> _buttonStates = new();
+    private readonly IMouse _mouse;
     private readonly Dictionary<int, bool> _previousButtonStates = new();
     private Vector2D<float> _position;
-    private float _wheelDelta;
     private float _previousWheel;
 
     /// <summary>
-    /// Creates a new MouseDevice instance.
+    ///     Creates a new MouseDevice instance.
     /// </summary>
     public MouseDevice(IMouse mouse)
     {
@@ -24,27 +23,27 @@ public class MouseDevice
     }
 
     /// <summary>
-    /// Gets the current mouse position.
+    ///     Gets the current mouse position.
     /// </summary>
     public Vector2D<float> Position => _position;
 
     /// <summary>
-    /// Gets the X coordinate of the mouse position.
+    ///     Gets the X coordinate of the mouse position.
     /// </summary>
     public float X => _position.X;
 
     /// <summary>
-    /// Gets the Y coordinate of the mouse position.
+    ///     Gets the Y coordinate of the mouse position.
     /// </summary>
     public float Y => _position.Y;
 
     /// <summary>
-    /// Gets the current wheel value.
+    ///     Gets the current wheel value.
     /// </summary>
-    public float Wheel => _wheelDelta;
+    public float Wheel { get; private set; }
 
     /// <summary>
-    /// Gets whether a mouse button is currently pressed.
+    ///     Gets whether a mouse button is currently pressed.
     /// </summary>
     public bool IsButtonPressed(int button)
     {
@@ -52,7 +51,7 @@ public class MouseDevice
     }
 
     /// <summary>
-    /// Gets whether a mouse button was just pressed this frame.
+    ///     Gets whether a mouse button was just pressed this frame.
     /// </summary>
     public bool WasButtonPressed(int button)
     {
@@ -62,7 +61,7 @@ public class MouseDevice
     }
 
     /// <summary>
-    /// Gets whether a mouse button was just released this frame.
+    ///     Gets whether a mouse button was just released this frame.
     /// </summary>
     public bool WasButtonReleased(int button)
     {
@@ -72,7 +71,7 @@ public class MouseDevice
     }
 
     /// <summary>
-    /// Updates the mouse state from the underlying device.
+    ///     Updates the mouse state from the underlying device.
     /// </summary>
     public void Update()
     {
@@ -82,13 +81,10 @@ public class MouseDevice
 
         // Get current state
         _position = new Vector2D<float>(_mouse.Position.X, _mouse.Position.Y);
-        _previousWheel = _wheelDelta;
-        _wheelDelta = _mouse.ScrollWheels.Count > 0 ? _mouse.ScrollWheels[0].Y : 0f;
+        _previousWheel = Wheel;
+        Wheel = _mouse.ScrollWheels.Count > 0 ? _mouse.ScrollWheels[0].Y : 0f;
 
         // Update button states (buttons 0-7 should be sufficient for most mice)
-        for (int i = 0; i < 8; i++)
-        {
-            _buttonStates[i] = _mouse.IsButtonPressed((MouseButton)i);
-        }
+        for (var i = 0; i < 8; i++) _buttonStates[i] = _mouse.IsButtonPressed((MouseButton)i);
     }
 }

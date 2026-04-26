@@ -1,96 +1,91 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
+using System.Diagnostics;
 using System.Numerics;
-using System.Linq;
-using Silk.NET.Vulkan;
-using Silk.NET.Windowing;
-using Silk.NET.Vulkan.Extensions.KHR;
-using Silk.NET.Vulkan.Extensions.EXT;
-using Semaphore = Silk.NET.Vulkan.Semaphore;
-using Vma;
 using NjulfFramework.Rendering.Core;
 using NjulfFramework.Rendering.Data;
 using NjulfFramework.Rendering.Memory;
 using NjulfFramework.Rendering.Pipeline;
 using NjulfFramework.Rendering.Resources;
 using NjulfFramework.Rendering.Resources.Descriptors;
+using Silk.NET.Vulkan;
+using Silk.NET.Vulkan.Extensions.EXT;
+using Silk.NET.Vulkan.Extensions.KHR;
+using Silk.NET.Windowing;
+using Vma;
+using Semaphore = Silk.NET.Vulkan.Semaphore;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace NjulfFramework.Rendering;
 
 public unsafe class VulkanRenderer : IDisposable
 {
-    private readonly IWindow _window;
-    private readonly VulkanContext? _vulkanContext;
-    private SwapchainManager? _swapchainManager;
-    private CommandBufferManager? _commandBufferManager;
-    private SynchronizationManager? _synchronizationManager;
-    private RenderPassManager? _renderPassManager;
-    private FramebufferManager? _framebufferManager;
-    private GraphicsPipeline? _graphicsPipeline;
-    private MeshPipeline? _meshPipeline;
-
-    private KhrSwapchain? _khrSwapchain;
-    private KhrSurface? _khrSurface;
-    private ExtMeshShader? _extMeshShader;
+    private const uint MaxFramesInFlight = 2;
 
     // Phase 2: Resource managers
     private readonly BufferManager? _bufferManager;
-    private MeshManager? _meshManager;
-    private DescriptorManager? _descriptorManager;
-
-    private DescriptorSetLayouts? _descriptorSetLayouts;
-    private BindlessDescriptorHeap? _bindlessHeap;
-    private DescriptorPool _meshBuffersDescriptorPool;
-    private DescriptorSet _meshBuffersDescriptorSet;
-
-    private readonly SceneDataBuilder _sceneBuilder;
     private readonly FrameUploadRing _frameUploadRing;
 
-    private Buffer _sceneObjectBuffer;
-    private Buffer _sceneMaterialBuffer;
-    private Buffer _sceneMeshBuffer;
-
-    private RenderGraph? _renderGraph;
-    private ImageView _depthImageView;
-    private Buffer _depthBuffer;
-    private Image _depthImage;
-    private Allocation* _depthAllocation;
-    private ImageLayout _depthImageLayout = ImageLayout.Undefined;
-    private ImageLayout[]? _swapchainImageLayouts;
-
-
-    // Phase 3.5: Forward+ lighting
-    private LightManager? _lightManager;
-    private TiledLightCullingPass? _tiledLightCullingPass;
-
-    private uint _frameIndex;
-
     // Phase 2: Scene objects
-    private Dictionary<string, Data.RenderingData.RenderObject> _renderObjects = new();
+    private readonly Dictionary<string, Data.RenderingData.RenderObject> _renderObjects = new();
 
-    private SurfaceKHR _surface;
-    private uint _currentFrameIndex = 0;
-    private const uint MaxFramesInFlight = 2;
+    private readonly SceneDataBuilder _sceneBuilder;
 
     // Camera matrices
-    private Matrix4x4 _viewMatrix = Matrix4x4.CreateLookAt(
+    private readonly Matrix4x4 _viewMatrix = Matrix4x4.CreateLookAt(
         new Vector3(0, 2, 3), //new Vector3(0, 2, 3),
         Vector3.Zero,
         Vector3.UnitY);
 
+    private readonly VulkanContext? _vulkanContext;
+    private readonly IWindow _window;
+    private BindlessDescriptorHeap? _bindlessHeap;
+    private CommandBufferManager? _commandBufferManager;
+    private uint _currentFrameIndex;
+    private Allocation* _depthAllocation;
+    private Buffer _depthBuffer;
+    private Image _depthImage;
+    private ImageLayout _depthImageLayout = ImageLayout.Undefined;
+    private ImageView _depthImageView;
+    private DescriptorManager? _descriptorManager;
+
+    private DescriptorSetLayouts? _descriptorSetLayouts;
+    private ExtMeshShader? _extMeshShader;
+    private FramebufferManager? _framebufferManager;
+
+    private uint _frameIndex;
+    private GraphicsPipeline? _graphicsPipeline;
+    private KhrSurface? _khrSurface;
+
+    private KhrSwapchain? _khrSwapchain;
+
+
+    // Phase 3.5: Forward+ lighting
+    private DescriptorPool _meshBuffersDescriptorPool;
+    private DescriptorSet _meshBuffersDescriptorSet;
+    private MeshManager? _meshManager;
+    private MeshPipeline? _meshPipeline;
+
     private Matrix4x4 _projectionMatrix;
 
-    public VulkanContext VulkanContext => _vulkanContext!;
-    public SwapchainManager SwapchainManager => _swapchainManager!;
+    private RenderGraph? _renderGraph;
+    private RenderPassManager? _renderPassManager;
+    private Buffer _sceneMaterialBuffer;
+    private Buffer _sceneMeshBuffer;
 
-    public LightManager? LightManager => _lightManager;
+    private Buffer _sceneObjectBuffer;
+
+    private SurfaceKHR _surface;
+    private ImageLayout[]? _swapchainImageLayouts;
+    private SwapchainManager? _swapchainManager;
+    private SynchronizationManager? _synchronizationManager;
+    private TiledLightCullingPass? _tiledLightCullingPass;
 
     public VulkanRenderer(IWindow window)
     {
         _window = window ?? throw new ArgumentNullException(nameof(window));
 
-        _vulkanContext = new VulkanContext(true);
+        _vulkanContext = new VulkanContext();
 
         _bufferManager = new BufferManager(_vulkanContext.VulkanApi, _vulkanContext.VmaAllocator);
 
@@ -98,8 +93,50 @@ public unsafe class VulkanRenderer : IDisposable
         _frameUploadRing = new FrameUploadRing(_bufferManager);
     }
 
+    public VulkanContext VulkanContext => _vulkanContext!;
+    public SwapchainManager SwapchainManager => _swapchainManager!;
+
+    public LightManager? LightManager { get; private set; }
+
+    public void Dispose()
+    {
+        if (_vulkanContext != null) _vulkanContext.VulkanApi.DeviceWaitIdle(_vulkanContext.Device);
+
+        // Phase 2: Dispose resource managers
+        _descriptorManager?.Dispose();
+        _meshManager?.Dispose();
+        _bufferManager?.Dispose();
+        LightManager?.Dispose();
+        _tiledLightCullingPass?.Dispose();
+
+        _bindlessHeap?.Dispose();
+        _descriptorSetLayouts?.Dispose();
+
+        _graphicsPipeline?.Dispose();
+        _meshPipeline?.Dispose();
+        _framebufferManager?.Dispose();
+        _renderPassManager?.Dispose();
+        _synchronizationManager?.Dispose();
+        _commandBufferManager?.Dispose();
+        _swapchainManager?.Dispose();
+        _renderGraph = null;
+
+        if (_depthImageView.Handle != 0)
+            _vulkanContext.VulkanApi.DestroyImageView(_vulkanContext.Device, _depthImageView, null);
+        if (_depthImage.Handle != 0)
+            Apis.DestroyImage(_vulkanContext.VmaAllocator, _depthImage, null);
+
+        if (_vulkanContext != null && _surface.Handle != 0)
+            _khrSurface!.DestroySurface(_vulkanContext.Instance, _surface, null);
+
+        if (_vulkanContext != null && _meshBuffersDescriptorPool.Handle != 0)
+            _vulkanContext.VulkanApi.DestroyDescriptorPool(_vulkanContext.Device, _meshBuffersDescriptorPool, null);
+
+        _vulkanContext?.Dispose();
+    }
+
     /// <summary>
-    /// Initialize the renderer. Called once at startup.
+    ///     Initialize the renderer. Called once at startup.
     /// </summary>
     public void Load()
     {
@@ -144,15 +181,13 @@ public unsafe class VulkanRenderer : IDisposable
 
             _commandBufferManager = new CommandBufferManager(
                 _vulkanContext,
-                _vulkanContext.GraphicsQueueFamily,
-                MaxFramesInFlight);
+                _vulkanContext.GraphicsQueueFamily);
             Console.WriteLine("✓ Command buffers allocated");
 
             _synchronizationManager = new SynchronizationManager(
                 _vulkanContext.VulkanApi,
                 _vulkanContext.Device,
-                _swapchainManager.SwapchainImageCount,
-                MaxFramesInFlight);
+                _swapchainManager.SwapchainImageCount);
             Console.WriteLine("✓ Synchronization primitives created");
 
             // Create render pass
@@ -247,13 +282,10 @@ public unsafe class VulkanRenderer : IDisposable
                     _descriptorSetLayouts.TextureHeapLayout, // Set 1
                     _descriptorSetLayouts.MeshBuffersLayout // Set 2
                 },
-                _swapchainManager.SwapchainImageFormat, Format.D32Sfloat,
-                "Shaders/mesh.mesh",
-                "Shaders/forward_plus.frag",
-                "Shaders/mesh.task");
+                _swapchainManager.SwapchainImageFormat);
 
             // Phase 3.5: Initialize light manager
-            _lightManager = new LightManager(
+            LightManager = new LightManager(
                 _vulkanContext.VulkanApi,
                 _vulkanContext.Device,
                 _bufferManager,
@@ -265,7 +297,7 @@ public unsafe class VulkanRenderer : IDisposable
                 "Tiled Light Culling",
                 _vulkanContext.VulkanApi,
                 _vulkanContext.Device,
-                _lightManager,
+                LightManager,
                 _bufferManager,
                 _descriptorSetLayouts,
                 _bindlessHeap);
@@ -277,7 +309,7 @@ public unsafe class VulkanRenderer : IDisposable
 
             // Phase 2: Add test cube to scene
             var cubeMesh = Data.RenderingData.Mesh.CreateCube();
-            var material = new Data.RenderingData.Material("default", "Shaders/test_vert.spv", "");
+            var material = new Data.RenderingData.Material("default", "Shaders/test_vert.spv");
             var cube = new Data.RenderingData.RenderObject("test_cube", cubeMesh, material, Matrix4x4.Identity);
             AddRenderObject(cube);
             Console.WriteLine("✓ Test cube added to scene");
@@ -288,12 +320,12 @@ public unsafe class VulkanRenderer : IDisposable
             CreateMeshBuffersDescriptorSet();
             UpdateMeshBuffersDescriptorSet();
 
-            System.Diagnostics.Debug.WriteLine("Vulkan renderer initialized successfully");
+            Debug.WriteLine("Vulkan renderer initialized successfully");
             Console.WriteLine("\n✓ Renderer fully initialized - rendering started!\n");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to initialize renderer: {ex.Message}");
+            Debug.WriteLine($"Failed to initialize renderer: {ex.Message}");
             Console.WriteLine($"✗ Renderer initialization failed: {ex.Message}");
             if (ex.InnerException != null) Console.WriteLine($"  Inner: {ex.InnerException.Message}");
             throw;
@@ -454,7 +486,7 @@ public unsafe class VulkanRenderer : IDisposable
 
 
     /// <summary>
-    /// Update logic. Called once per frame before rendering.
+    ///     Update logic. Called once per frame before rendering.
     /// </summary>
     public void Update(double deltaTime)
     {
@@ -466,11 +498,11 @@ public unsafe class VulkanRenderer : IDisposable
         }
 
         // Add test lights (temporary - for demonstration)
-        if (_frameIndex == 0 && _lightManager != null)
+        if (_frameIndex == 0 && LightManager != null)
         {
-            _lightManager.AddPointLight(new Vector3(5, 0, 0), 10, new Vector3(1, 1, 1), 1.0f);
-            _lightManager.AddPointLight(new Vector3(-5, 3, 0), 10, new Vector3(1, 0, 0), 0.5f);
-            _lightManager.AddPointLight(new Vector3(0, 3, 5), 10, new Vector3(0, 1, 0), 0.6f);
+            LightManager.AddPointLight(new Vector3(5, 0, 0), 10, new Vector3(1, 1, 1), 1.0f);
+            LightManager.AddPointLight(new Vector3(-5, 3, 0), 10, new Vector3(1, 0, 0), 0.5f);
+            LightManager.AddPointLight(new Vector3(0, 3, 5), 10, new Vector3(0, 1, 0), 0.6f);
             Console.WriteLine("✓ Test lights added to scene");
 
             _frameIndex++;
@@ -478,7 +510,7 @@ public unsafe class VulkanRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render logic. Called once per frame.
+    ///     Render logic. Called once per frame.
     /// </summary>
     public void Draw()
     {
@@ -518,10 +550,9 @@ public unsafe class VulkanRenderer : IDisposable
             RecreateSwapchain();
             return;
         }
-        else if (result != Result.Success && result != Result.SuboptimalKhr)
-        {
+
+        if (result != Result.Success && result != Result.SuboptimalKhr)
             throw new Exception("Failed to acquire next image");
-        }
 
         // Get the render finished semaphore for THIS IMAGE (per-image)
         var renderFinishedSemaphore = _synchronizationManager.RenderFinishedSemaphores[imageIndex];
@@ -552,7 +583,7 @@ public unsafe class VulkanRenderer : IDisposable
             _sceneMeshBuffer);
 
         // Phase 3.5: Upload lights
-        _lightManager?.UploadToGPU(transferCommandBuffer, _frameUploadRing);
+        LightManager?.UploadToGPU(transferCommandBuffer, _frameUploadRing);
 
         _commandBufferManager.EndRecording(transferCommandBuffer);
 
@@ -588,8 +619,8 @@ public unsafe class VulkanRenderer : IDisposable
             BindlessHeap = _bindlessHeap,
             MeshManager = _meshManager,
             MeshBuffersSet = _meshBuffersDescriptorSet,
-            LightCount = _lightManager?.LightCount ?? 0,
-            LightBufferIndex = _lightManager?.LightBufferBindlessIndex ?? 0,
+            LightCount = LightManager?.LightCount ?? 0,
+            LightBufferIndex = LightManager?.LightBufferBindlessIndex ?? 0,
             TiledLightHeaderBufferIndex = _tiledLightCullingPass?.TiledLightHeaderBufferIndex ?? 0,
             TiledLightIndicesBufferIndex = _tiledLightCullingPass?.TiledLightIndicesBufferIndex ?? 0
         };
@@ -623,7 +654,7 @@ public unsafe class VulkanRenderer : IDisposable
 
 
     /// <summary>
-    /// Add a renderable object to the scene.
+    ///     Add a renderable object to the scene.
     /// </summary>
     public void AddRenderObject(Data.RenderingData.RenderObject obj)
     {
@@ -638,7 +669,7 @@ public unsafe class VulkanRenderer : IDisposable
     }
 
     /// <summary>
-    /// Remove a renderable object from the scene.
+    ///     Remove a renderable object from the scene.
     /// </summary>
     public void RemoveRenderObject(string name)
     {
@@ -646,7 +677,7 @@ public unsafe class VulkanRenderer : IDisposable
     }
 
     /// <summary>
-    /// Get a render object by name.
+    ///     Get a render object by name.
     /// </summary>
     public Data.RenderingData.RenderObject? GetRenderObject(string name)
     {
@@ -695,8 +726,8 @@ public unsafe class VulkanRenderer : IDisposable
             BindlessHeap = _bindlessHeap,
             MeshManager = _meshManager,
             MeshBuffersSet = _meshBuffersDescriptorSet,
-            LightCount = _lightManager?.LightCount ?? 0,
-            LightBufferIndex = _lightManager?.LightBufferBindlessIndex ?? 0,
+            LightCount = LightManager?.LightCount ?? 0,
+            LightBufferIndex = LightManager?.LightBufferBindlessIndex ?? 0,
             TiledLightHeaderBufferIndex = _tiledLightCullingPass?.TiledLightHeaderBufferIndex ?? 0,
             TiledLightIndicesBufferIndex = _tiledLightCullingPass?.TiledLightIndicesBufferIndex ?? 0
         };
@@ -810,8 +841,8 @@ public unsafe class VulkanRenderer : IDisposable
                 ScreenWidth = _swapchainManager.SwapchainExtent.Width,
                 ScreenHeight = _swapchainManager.SwapchainExtent.Height,
                 DebugMeshlets = 0,
-                LightCount = _lightManager?.LightCount ?? 0,
-                LightBufferIndex = _lightManager?.LightBufferBindlessIndex ?? 0,
+                LightCount = LightManager?.LightCount ?? 0,
+                LightBufferIndex = LightManager?.LightBufferBindlessIndex ?? 0,
                 TiledLightHeaderBufferIndex = _tiledLightCullingPass?.TiledLightHeaderBufferIndex ?? 0,
                 TiledLightIndicesBufferIndex = _tiledLightCullingPass?.TiledLightIndicesBufferIndex ?? 0,
                 Padding = 0
@@ -1005,44 +1036,7 @@ public unsafe class VulkanRenderer : IDisposable
             0, null, 0, null, 1, &barrier);
     }
 
-    public void Dispose()
-    {
-        if (_vulkanContext != null) _vulkanContext.VulkanApi.DeviceWaitIdle(_vulkanContext.Device);
-
-        // Phase 2: Dispose resource managers
-        _descriptorManager?.Dispose();
-        _meshManager?.Dispose();
-        _bufferManager?.Dispose();
-        _lightManager?.Dispose();
-        _tiledLightCullingPass?.Dispose();
-
-        _bindlessHeap?.Dispose();
-        _descriptorSetLayouts?.Dispose();
-
-        _graphicsPipeline?.Dispose();
-        _meshPipeline?.Dispose();
-        _framebufferManager?.Dispose();
-        _renderPassManager?.Dispose();
-        _synchronizationManager?.Dispose();
-        _commandBufferManager?.Dispose();
-        _swapchainManager?.Dispose();
-        _renderGraph = null;
-
-        if (_depthImageView.Handle != 0)
-            _vulkanContext.VulkanApi.DestroyImageView(_vulkanContext.Device, _depthImageView, null);
-        if (_depthImage.Handle != 0)
-            Apis.DestroyImage(_vulkanContext.VmaAllocator, _depthImage, null);
-
-        if (_vulkanContext != null && _surface.Handle != 0)
-            _khrSurface!.DestroySurface(_vulkanContext.Instance, _surface, null);
-
-        if (_vulkanContext != null && _meshBuffersDescriptorPool.Handle != 0)
-            _vulkanContext.VulkanApi.DestroyDescriptorPool(_vulkanContext.Device, _meshBuffersDescriptorPool, null);
-
-        _vulkanContext?.Dispose();
-    }
-
-    private unsafe void CreateMeshBuffersDescriptorSet()
+    private void CreateMeshBuffersDescriptorSet()
     {
         if (_descriptorSetLayouts == null || _vulkanContext == null)
             throw new InvalidOperationException("Descriptor set layouts not initialized");
@@ -1101,7 +1095,7 @@ public unsafe class VulkanRenderer : IDisposable
             Result.Success) throw new InvalidOperationException("Failed to allocate mesh buffers descriptor set");
     }
 
-    private unsafe void UpdateMeshBuffersDescriptorSet()
+    private void UpdateMeshBuffersDescriptorSet()
     {
         if (_meshManager == null || _vulkanContext == null)
             throw new InvalidOperationException("Mesh manager not initialized");
