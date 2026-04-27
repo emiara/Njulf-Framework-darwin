@@ -2,6 +2,7 @@
 
 using System.Numerics;
 using NjulfFramework.Assets.Models;
+using NjulfFramework.Core.Enums;
 using Silk.NET.Assimp;
 
 namespace NjulfFramework.Assets;
@@ -126,6 +127,29 @@ public class MaterialConverter
         max = 3;
         if (_assimp.GetMaterialFloatArray(assimpMaterial, AiMatkeyColorEmissive, 0, 0, (float*)&emissiveColor,
                 ref max) == Return.Success) frameworkMaterial.EmissiveFactor = emissiveColor;
+
+        // glTF PBR metallic-roughness workflow properties
+        GetGltfPbrMetallicRoughness(assimpMaterial, frameworkMaterial);
+    }
+
+    /// <summary>
+    ///     Get glTF PBR metallic-roughness properties
+    /// </summary>
+    private unsafe void GetGltfPbrMetallicRoughness(Material* assimpMaterial, FrameworkMaterial frameworkMaterial)
+    {
+        // Metallic factor
+        var metallicFactor = 1.0f;
+        uint maxVal = 1;
+        if (_assimp.GetMaterialFloatArray(assimpMaterial, "$mat.gltf.pbrMetallicRoughness.metallicFactor", 0, 0, &metallicFactor, ref maxVal) == Return.Success)
+            frameworkMaterial.MetallicFactor = metallicFactor;
+
+        // Roughness factor
+        var roughnessFactor = 1.0f;
+        if (_assimp.GetMaterialFloatArray(assimpMaterial, "$mat.gltf.pbrMetallicRoughness.roughnessFactor", 0, 0, &roughnessFactor, ref maxVal) == Return.Success)
+            frameworkMaterial.RoughnessFactor = roughnessFactor;
+
+        // Base color factor (already handled above)
+        // Metallic-roughness texture (already handled above)
     }
 
     /// <summary>
@@ -139,6 +163,25 @@ public class MaterialConverter
         if (_assimp.GetMaterialFloatArray(assimpMaterial, AiMatkeyOpacity, 0, 0, &opacity, ref max) == Return.Success)
             if (opacity < 1.0f)
                 frameworkMaterial.AlphaMode = AlphaMode.Blend;
+
+        // glTF alpha mode
+        var alphaMode = "OPAQUE";
+        AssimpString alphaModeStr = default;
+        if (_assimp.GetMaterialString(assimpMaterial, "$mat.gltf.alphaMode", 0, 0, ref alphaModeStr) == Return.Success)
+            alphaMode = alphaModeStr.AsString;
+
+        // glTF alpha cutoff
+        var alphaCutoff = 0.5f;
+        if (_assimp.GetMaterialFloatArray(assimpMaterial, "$mat.gltf.alphaCutoff", 0, 0, &alphaCutoff, ref max) == Return.Success)
+            frameworkMaterial.AlphaCutoff = alphaCutoff;
+
+        // Set alpha mode based on glTF properties
+        if (alphaMode == "MASK")
+            frameworkMaterial.AlphaMode = AlphaMode.Mask;
+        else if (alphaMode == "BLEND")
+            frameworkMaterial.AlphaMode = AlphaMode.Blend;
+        else
+            frameworkMaterial.AlphaMode = AlphaMode.Opaque;
     }
 
     /// <summary>

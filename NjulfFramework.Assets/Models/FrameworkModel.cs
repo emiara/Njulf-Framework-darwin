@@ -1,16 +1,26 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System.Numerics;
+using System.Collections.Generic;
+using NjulfFramework.Core.Enums;
+using NjulfFramework.Core.Math;
+using NjulfFramework.Core.Interfaces.Assets;
+using NjulfFramework.Core.Interfaces.Rendering;
 
 namespace NjulfFramework.Assets.Models;
 
 /// <summary>
 ///     Framework-agnostic 3D model representation
 /// </summary>
-public class FrameworkModel
+public class FrameworkModel : IModel
 {
     public string Name { get; set; } = "Unnamed";
+    public string SourcePath { get; set; } = string.Empty;
     public List<FrameworkMesh> Meshes { get; } = new();
+    IEnumerable<IMaterial> IModel.Materials => Materials;
+
+    IEnumerable<IMesh> IModel.Meshes => Meshes;
+
     public List<FrameworkMaterial> Materials { get; } = new();
     public SceneNode RootNode { get; set; }
 
@@ -24,19 +34,36 @@ public class FrameworkModel
         public List<SceneNode> Children { get; } = new();
         public List<int> MeshIndices { get; } = new();
     }
+
+    public void Dispose()
+    {
+        // Dispose of materials and meshes
+        foreach (var material in Materials)
+        {
+            // Materials don't have explicit disposal logic yet
+        }
+        
+        foreach (var mesh in Meshes)
+        {
+            // Meshes don't have explicit disposal logic yet
+        }
+    }
 }
 
-/// <summary>
-///     Framework-agnostic mesh representation
-/// </summary>
-public class FrameworkMesh
-{
-    public string Name { get; set; } = "Mesh";
-    public Vertex[] Vertices { get; set; } = Array.Empty<Vertex>();
-    public uint[] Indices { get; set; } = Array.Empty<uint>();
-    public Vector3 BoundingBoxMin { get; set; } = Vector3.Zero;
-    public Vector3 BoundingBoxMax { get; set; } = Vector3.One;
-    public int MaterialIndex { get; set; } = 0;
+    /// <summary>
+    ///     Framework-agnostic mesh representation
+    /// </summary>
+    public class FrameworkMesh : IMesh
+    {
+        public string Name { get; set; } = "Mesh";
+        public BoundingBox Bounds => new BoundingBox(BoundingBoxMin, BoundingBoxMax);
+        public string MaterialName { get; set; } = string.Empty;
+        public Vertex[] Vertices { get; set; } = Array.Empty<Vertex>();
+        public uint[] Indices { get; set; } = Array.Empty<uint>();
+        public Vector3 BoundingBoxMin { get; set; } = Vector3.Zero;
+        public Vector3 BoundingBoxMax { get; set; } = Vector3.One;
+        public int MaterialIndex { get; set; } = 0;
+        public PrimitiveMode PrimitiveMode { get; set; } = PrimitiveMode.Triangles;
 
     /// <summary>
     ///     Vertex structure matching renderer's Vertex format
@@ -54,11 +81,12 @@ public class FrameworkMesh
 /// <summary>
 ///     Framework-agnostic material representation
 /// </summary>
-public class FrameworkMaterial
+public class FrameworkMaterial : IMaterial
 {
     public string Name { get; set; } = "Material";
+    public string ShaderPath { get; set; } = "Shaders/forward_plus.frag";
 
-    // PBR Properties
+        // PBR Properties
     public Vector4 BaseColorFactor { get; set; } = Vector4.One;
     public string BaseColorTexturePath { get; set; } = string.Empty;
     public float MetallicFactor { get; set; } = 1.0f;
@@ -75,14 +103,4 @@ public class FrameworkMaterial
     public AlphaMode AlphaMode { get; set; } = AlphaMode.Opaque;
     public float AlphaCutoff { get; set; } = 0.5f;
     public bool DoubleSided { get; set; } = false;
-}
-
-/// <summary>
-///     Alpha mode for material transparency
-/// </summary>
-public enum AlphaMode
-{
-    Opaque, // Fully opaque
-    Mask, // Binary transparency with cutoff
-    Blend // Alpha blending
 }

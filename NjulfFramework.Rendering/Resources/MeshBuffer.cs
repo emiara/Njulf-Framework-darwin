@@ -284,7 +284,7 @@ public class MeshBuffer : IDisposable
         // Write vertex data to staging buffer
         if (mesh.Vertices.Length > 0)
         {
-            uploadRing.WriteData(mesh.Vertices, out var vertexSrcOffset);
+            uploadRing.WriteData<Data.RenderingData.Vertex>(mesh.Vertices, out var vertexSrcOffset);
 
             var srcBuffer = uploadRing.CurrentUploadBuffer;
             var dstBuffer = _vertexBuffer;
@@ -297,7 +297,7 @@ public class MeshBuffer : IDisposable
         // Write index data to staging buffer
         if (mesh.Indices.Length > 0)
         {
-            uploadRing.WriteData(mesh.Indices, out var indexSrcOffset);
+            uploadRing.WriteData<uint>(mesh.Indices, out var indexSrcOffset);
 
             var srcBuffer = uploadRing.CurrentUploadBuffer;
             var dstBuffer = _indexBuffer;
@@ -445,9 +445,9 @@ public class MeshBuffer : IDisposable
         if (_meshletDataUploaded || _meshlets.Count == 0)
             return;
 
-        uploadRing.WriteData(_meshlets.ToArray(), out var meshletSrcOffset);
-        uploadRing.WriteData(_meshletVertexIndices.ToArray(), out var meshletVertexIndexSrcOffset);
-        uploadRing.WriteData(_meshletTriangleIndices.ToArray(), out var meshletTriangleIndexSrcOffset);
+        uploadRing.WriteData<GPUMeshlet>(_meshlets.ToArray(), out var meshletSrcOffset);
+        uploadRing.WriteData<uint>(_meshletVertexIndices.ToArray(), out var meshletVertexIndexSrcOffset);
+        uploadRing.WriteData<uint>(_meshletTriangleIndices.ToArray(), out var meshletTriangleIndexSrcOffset);
 
         var srcBuffer = uploadRing.CurrentUploadBuffer;
 

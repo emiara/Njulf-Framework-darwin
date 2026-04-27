@@ -2,6 +2,7 @@
 
 using System.Diagnostics;
 using System.Numerics;
+using NjulfFramework.Core.Interfaces.Rendering;
 using NjulfFramework.Rendering.Core;
 using NjulfFramework.Rendering.Data;
 using NjulfFramework.Rendering.Memory;
@@ -18,24 +19,25 @@ using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace NjulfFramework.Rendering;
 
-public unsafe class VulkanRenderer : IDisposable
+public unsafe class VulkanRenderer : IRenderer
 {
     private const uint MaxFramesInFlight = 2;
 
     // Phase 2: Resource managers
     private readonly BufferManager? _bufferManager;
     private readonly FrameUploadRing _frameUploadRing;
+    private TextureManager? _textureManager;
 
     // Phase 2: Scene objects
     private readonly Dictionary<string, Data.RenderingData.RenderObject> _renderObjects = new();
 
-    private readonly SceneDataBuilder _sceneBuilder;
+    private SceneDataBuilder? _sceneBuilder;
 
     // Camera matrices
     private readonly Matrix4x4 _viewMatrix = Matrix4x4.CreateLookAt(
-        new Vector3(0, 2, 3), //new Vector3(0, 2, 3),
-        Vector3.Zero,
-        Vector3.UnitY);
+    new Vector3(0, 2, 3), //new Vector3(0, 2, 3),
+    Vector3.Zero,
+    Vector3.UnitY);
 
     private readonly VulkanContext? _vulkanContext;
     private readonly IWindow _window;
@@ -86,10 +88,7 @@ public unsafe class VulkanRenderer : IDisposable
         _window = window ?? throw new ArgumentNullException(nameof(window));
 
         _vulkanContext = new VulkanContext();
-
         _bufferManager = new BufferManager(_vulkanContext.VulkanApi, _vulkanContext.VmaAllocator);
-
-        _sceneBuilder = new SceneDataBuilder();
         _frameUploadRing = new FrameUploadRing(_bufferManager);
     }
 
@@ -228,7 +227,13 @@ public unsafe class VulkanRenderer : IDisposable
                 _vulkanContext.Device,
                 _bufferManager);
             Console.WriteLine("✓ Mesh manager initialized");
-            _sceneBuilder.SetMeshManager(_meshManager);
+
+            // Create texture manager
+            _textureManager = new TextureManager(
+                _vulkanContext.VulkanApi,
+                _vulkanContext.Device,
+                _vulkanContext.VmaAllocator);
+            Console.WriteLine("✓ Texture manager initialized");
 
             // Create bindless descriptor layouts
             _descriptorSetLayouts = new DescriptorSetLayouts(
@@ -306,6 +311,10 @@ public unsafe class VulkanRenderer : IDisposable
             // Setup render graph with passes
             SetupRenderGraph();
             Console.WriteLine("✓ Render graph initialized");
+
+            // Create scene data builder now that all resources are ready
+            _sceneBuilder = new SceneDataBuilder(_meshManager, _textureManager, _bindlessHeap);
+            Console.WriteLine("✓ Scene data builder created");
 
             // Phase 2: Add test cube to scene
             var cubeMesh = Data.RenderingData.Mesh.CreateCube();
@@ -1192,5 +1201,36 @@ public unsafe class VulkanRenderer : IDisposable
         };
 
         _vulkanContext.VulkanApi.UpdateDescriptorSets(_vulkanContext.Device, 5, writes, 0, null);
+    }
+
+    public Task InitializeAsync()
+    {
+        // Initialize Vulkan renderer
+        return Task.CompletedTask;
+    }
+
+    public Task RenderFrameAsync()
+    {
+        // Render a frame using Vulkan
+        Draw();
+        return Task.CompletedTask;
+    }
+
+    public void Resize(int width, int height)
+    {
+        // Handle window resize
+    }
+
+    /// <summary>
+    ///     Creates a SceneDataBuilder using the renderer's initialised Vulkan resources.
+    ///     Must be called after <see cref="Load"/> has completed.
+    /// </summary>
+    public SceneDataBuilder CreateSceneDataBuilder()
+    {
+        if (_meshManager == null || _textureManager == null || _bindlessHeap == null)
+            throw new InvalidOperationException(
+                "CreateSceneDataBuilder() must be called after Load() has completed.");
+
+        return new SceneDataBuilder(_meshManager, _textureManager, _bindlessHeap);
     }
 }

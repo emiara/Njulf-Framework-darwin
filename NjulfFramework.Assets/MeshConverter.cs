@@ -1,21 +1,74 @@
 // SPDX-License-Identifier: MPL-2.0
 
+using System;
 using System.Numerics;
+using System.Collections.Generic;
+using System.Linq;
 using NjulfFramework.Assets.Models;
+using NjulfFramework.Core.Enums;
+using NjulfFramework.Core.Interfaces.Assets;
+using NjulfFramework.Core.Interfaces.Conversion;
+using NjulfFramework.Core.Interfaces.Rendering;
 using Silk.NET.Assimp;
 
 namespace NjulfFramework.Assets;
 
-/// <summary>
-///     Converts Assimp meshes to framework meshes
-/// </summary>
-public class MeshConverter
+    /// <summary>
+    ///     Converts Assimp meshes to framework meshes
+    /// </summary>
+public class MeshConverter : IModelConverter
 {
     /// <summary>
     ///     Constructor
     /// </summary>
     public MeshConverter()
     {
+    }
+
+    /// <summary>
+    ///     Convert a model to renderable objects
+    /// </summary>
+    /// <param name="model">Model to convert</param>
+    /// <returns>Collection of renderable objects</returns>
+    public IEnumerable<IRenderable> ConvertToRenderables(IModel model)
+    {
+        if (model == null)
+            throw new ArgumentNullException(nameof(model));
+
+        var renderables = new List<IRenderable>();
+        
+        // Convert each mesh in the model to a renderable object
+        var meshes = model.Meshes.ToList();
+        var materials = model.Materials.ToList();
+        for (int i = 0; i < meshes.Count; i++)
+        {
+            var mesh = meshes[i];
+            // Get the material index from the mesh, default to 0 if not available
+            int materialIndex = 0;
+            var frameworkMesh = mesh as FrameworkMesh;
+            if (frameworkMesh != null)
+            {
+                materialIndex = frameworkMesh.MaterialIndex;
+            }
+            
+            // Ensure material index is within bounds
+            if (materialIndex < 0 || materialIndex >= materials.Count)
+                materialIndex = 0;
+            
+            var material = materials[materialIndex];
+            
+            var renderObject = new RenderObject
+            {
+                Name = mesh.Name,
+                Mesh = mesh,
+                Material = material,
+                Transform = Matrix4x4.Identity
+            };
+            
+            renderables.Add(renderObject);
+        }
+        
+        return renderables;
     }
 
     /// <summary>
@@ -85,8 +138,37 @@ public class MeshConverter
         frameworkMesh.BoundingBoxMin = boundingBoxMin;
         frameworkMesh.BoundingBoxMax = boundingBoxMax;
         frameworkMesh.MaterialIndex = (int)assimpMesh->MMaterialIndex;
+        frameworkMesh.PrimitiveMode = GetGltfPrimitiveMode(assimpMesh);
 
         return frameworkMesh;
+    }
+
+    /// <summary>
+    ///     Get glTF primitive mode
+    /// </summary>
+    private unsafe PrimitiveMode GetGltfPrimitiveMode(Mesh* assimpMesh)
+    {
+        // Determine primitive mode from glTF mesh
+        // glTF supports points, lines, and triangles
+        var primitiveTypes = (PrimitiveType)assimpMesh->MPrimitiveTypes;
+        if (primitiveTypes.HasFlag(PrimitiveType.Point))
+            return PrimitiveMode.Points;
+        if (primitiveTypes.HasFlag(PrimitiveType.Line))
+            return PrimitiveMode.Lines;
+        return PrimitiveMode.Triangles; // Default
+    }
+
+    private class RenderObject : IRenderable
+    {
+        public string Name { get; set; }
+        public Matrix4x4 Transform { get; set; }
+        public IMesh Mesh { get; set; }
+        public IMaterial Material { get; set; }
+
+        public void Update(double deltaTime)
+        {
+            // No update logic needed for basic render objects
+        }
     }
 
     /// <summary>

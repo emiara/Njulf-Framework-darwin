@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using NjulfFramework.Assets.Interfaces;
 using NjulfFramework.Assets.Models;
+using NjulfFramework.Core.Interfaces.Assets;
 using Silk.NET.Assimp;
 using File = System.IO.File;
 
@@ -10,7 +10,7 @@ namespace NjulfFramework.Assets;
 /// <summary>
 ///     Main asset loader implementation
 /// </summary>
-public class AssetLoader : IAssetLoader
+public class AssetLoader : IAssetLoader, IDisposable
 {
     private readonly AssetCache _assetCache;
     private readonly AssimpImporter _importer;
@@ -31,7 +31,7 @@ public class AssetLoader : IAssetLoader
     /// <summary>
     ///     Load a 3D model asynchronously
     /// </summary>
-    public async Task<FrameworkModel> LoadModelAsync(string filePath, CancellationToken cancellationToken = default)
+    public async Task<IModel> LoadModelAsync(string filePath, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(filePath))
             throw new ArgumentException("File path cannot be null or empty", nameof(filePath));
@@ -71,7 +71,7 @@ public class AssetLoader : IAssetLoader
     /// <summary>
     ///     Get a cached model if available
     /// </summary>
-    public FrameworkModel GetCachedModel(string filePath)
+    public IModel GetCachedModel(string filePath)
     {
         return _assetCache.GetCachedModel(filePath);
     }

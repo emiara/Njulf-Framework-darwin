@@ -10,15 +10,21 @@
     <ItemGroup>
         <PackageReference Include="GpuMemoryAllocator.vma" Version="3.3.0-0.2.0"/>
         <PackageReference Include="GpuMemoryAllocator.Vulkan" Version="3.3.0-0.2.0"/>
-        <PackageReference Include="Silk.NET.Assimp" Version="2.22.0"/>
-        <PackageReference Include="Silk.NET.Input" Version="2.22.0"/>
-        <PackageReference Include="Silk.NET.Input.Extensions" Version="2.22.0"/>
-        <PackageReference Include="Silk.NET.Maths" Version="2.22.0"/>
-        <PackageReference Include="Silk.NET.Vulkan" Version="2.22.0"/>
-        <PackageReference Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.22.0"/>
-        <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.22.0"/>
-        <PackageReference Include="Silk.NET.Windowing" Version="2.22.0"/>
+        <PackageReference Include="Silk.NET.Assimp" Version="2.23.0"/>
+        <PackageReference Include="Silk.NET.Input" Version="2.23.0"/>
+        <PackageReference Include="Silk.NET.Input.Extensions" Version="2.23.0"/>
+        <PackageReference Include="Silk.NET.Maths" Version="2.23.0"/>
+        <PackageReference Include="Silk.NET.Vulkan" Version="2.23.0"/>
+        <PackageReference Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.23.0"/>
+        <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.23.0"/>
+        <PackageReference Include="Silk.NET.Windowing" Version="2.23.0"/>
         <PackageReference Include="StbImageSharp" Version="2.30.15"/>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\NjulfFramework.Core\NjulfFramework.Core.csproj" />
+        <ProjectReference Include="..\NjulfFramework.Assets\NjulfFramework.Assets.csproj" />
     </ItemGroup>
 
     <ItemGroup>

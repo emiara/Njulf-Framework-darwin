@@ -1,3 +1,4 @@
+using NjulfFramework.Input.Interfaces;
 using Silk.NET.Input;
 
 namespace NjulfFramework.Input.Devices;
@@ -5,7 +6,7 @@ namespace NjulfFramework.Input.Devices;
 /// <summary>
 ///     Handles keyboard input including key states and modifiers.
 /// </summary>
-public class KeyboardDevice
+public class KeyboardDevice : IKeyboardDevice
 {
     private readonly IKeyboard _keyboard;
     private readonly Dictionary<int, bool> _keyStates = new();

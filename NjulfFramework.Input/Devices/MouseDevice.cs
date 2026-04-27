@@ -1,3 +1,4 @@
+using NjulfFramework.Input.Interfaces;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 
@@ -6,7 +7,7 @@ namespace NjulfFramework.Input.Devices;
 /// <summary>
 ///     Handles mouse input including position, buttons, and wheel.
 /// </summary>
-public class MouseDevice
+public class MouseDevice : IMouseDevice
 {
     private readonly Dictionary<int, bool> _buttonStates = new();
     private readonly IMouse _mouse;

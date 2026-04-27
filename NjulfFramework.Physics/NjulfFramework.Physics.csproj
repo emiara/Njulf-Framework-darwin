@@ -9,7 +9,7 @@
     <ItemGroup>
         <PackageReference Include="BepuPhysics" Version="2.5.0-beta.27"/>
         <PackageReference Include="BepuUtilities" Version="2.5.0-beta.27"/>
-        <PackageReference Include="Silk.NET.Maths" Version="2.22.0"/>
+        <PackageReference Include="Silk.NET.Maths" Version="2.23.0"/>
     </ItemGroup>
 
 </Project>

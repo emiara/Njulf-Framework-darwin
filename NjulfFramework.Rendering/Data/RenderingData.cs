@@ -5,6 +5,27 @@ using System.Runtime.InteropServices;
 
 namespace NjulfFramework.Rendering.Data;
 
+/// <summary>
+///     Represents the primitive mode for rendering.
+/// </summary>
+public enum PrimitiveMode
+{
+    /// <summary>
+    ///     Triangle list primitive mode.
+    /// </summary>
+    TriangleList,
+
+    /// <summary>
+    ///     Line list primitive mode.
+    /// </summary>
+    LineList,
+
+    /// <summary>
+    ///     Point list primitive mode.
+    /// </summary>
+    PointList
+}
+
 public class RenderingData
 {
     /// <summary>
@@ -141,13 +162,14 @@ public class RenderingData
     /// </summary>
     public class Mesh
     {
-        public Mesh(string name, Vertex[] vertices, uint[] indices, Vector3 boundingBoxMin, Vector3 boundingBoxMax)
+        public Mesh(string name, Vertex[] vertices, uint[] indices, Vector3 boundingBoxMin, Vector3 boundingBoxMax, PrimitiveMode primitiveMode = PrimitiveMode.TriangleList)
         {
             Name = name;
             Vertices = vertices;
             Indices = indices;
             BoundingBoxMin = boundingBoxMin;
             BoundingBoxMax = boundingBoxMax;
+            PrimitiveMode = primitiveMode;
         }
 
         public string Name { get; set; }
@@ -156,6 +178,7 @@ public class RenderingData
 
         public Vector3 BoundingBoxMin { get; set; }
         public Vector3 BoundingBoxMax { get; set; }
+        public PrimitiveMode PrimitiveMode { get; set; } = PrimitiveMode.TriangleList;
 
         /// <summary>
         ///     Create a simple cube mesh for testing.

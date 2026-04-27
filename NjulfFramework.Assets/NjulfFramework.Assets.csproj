@@ -12,7 +12,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\NjulfFramework.Rendering\NjulfFramework.Rendering.csproj"/>
+        <ProjectReference Include="..\NjulfFramework.Core\NjulfFramework.Core.csproj" />
     </ItemGroup>
 
 </Project>

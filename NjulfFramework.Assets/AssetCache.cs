@@ -2,6 +2,7 @@
 
 using System.Collections.Concurrent;
 using NjulfFramework.Assets.Models;
+using NjulfFramework.Core.Interfaces.Assets;
 
 namespace NjulfFramework.Assets;
 
@@ -10,7 +11,7 @@ namespace NjulfFramework.Assets;
 /// </summary>
 public class AssetCache
 {
-    private readonly ConcurrentDictionary<string, FrameworkModel> _cache = new();
+    private readonly ConcurrentDictionary<string, IModel> _cache = new();
     private readonly ConcurrentDictionary<string, int> _referenceCounts = new();
 
     /// <summary>
@@ -23,7 +24,7 @@ public class AssetCache
     /// <summary>
     ///     Cache an asset
     /// </summary>
-    public void CacheAsset(string filePath, FrameworkModel model)
+    public void CacheAsset(string filePath, IModel model)
     {
         if (string.IsNullOrWhiteSpace(filePath))
             throw new ArgumentException("File path cannot be null or empty", nameof(filePath));
@@ -38,7 +39,7 @@ public class AssetCache
     /// <summary>
     ///     Get a cached asset
     /// </summary>
-    public FrameworkModel GetCachedModel(string filePath)
+    public IModel GetCachedModel(string filePath)
     {
         if (string.IsNullOrWhiteSpace(filePath))
             throw new ArgumentException("File path cannot be null or empty", nameof(filePath));

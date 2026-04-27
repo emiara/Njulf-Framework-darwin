@@ -45,11 +45,21 @@ public class AssimpImporter : IDisposable
         {
             unsafe
             {
-                var scene = _assimp.ImportFile(filePath,
-                    (uint)(PostProcessSteps.Triangulate |
-                           PostProcessSteps.GenerateSmoothNormals |
-                           PostProcessSteps.CalculateTangentSpace |
-                           PostProcessSteps.JoinIdenticalVertices));
+                // Add glTF-specific post-processing flags
+                var flags = (uint)(PostProcessSteps.Triangulate |
+                             PostProcessSteps.GenerateSmoothNormals |
+                             PostProcessSteps.CalculateTangentSpace |
+                             PostProcessSteps.JoinIdenticalVertices);
+
+                // For glTF files, we might want different processing
+                if (filePath.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase))
+                {
+                    // glTF files are typically already triangulated and optimized
+                    flags = (uint)(PostProcessSteps.GenerateSmoothNormals |
+                                 PostProcessSteps.CalculateTangentSpace);
+                }
+
+                var scene = _assimp.ImportFile(filePath, flags);
 
                 if (scene == null)
                     throw new InvalidOperationException("Failed to import scene: " + _assimp.GetErrorStringS());

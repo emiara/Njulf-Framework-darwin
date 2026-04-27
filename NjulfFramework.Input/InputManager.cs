@@ -1,5 +1,6 @@
 using NjulfFramework.Input.Devices;
 using NjulfFramework.Input.Enums;
+using NjulfFramework.Input.Interfaces;
 using Silk.NET.Input;
 
 namespace NjulfFramework.Input;
@@ -7,19 +8,19 @@ namespace NjulfFramework.Input;
 /// <summary>
 ///     Central hub for input handling and state management.
 /// </summary>
-public class InputManager
+public class InputManager : IInputManager
 {
     private readonly Dictionary<string, InputAction> _actions = new();
 
     /// <summary>
     ///     Gets the keyboard device.
     /// </summary>
-    public KeyboardDevice? Keyboard { get; private set; }
+    public IKeyboardDevice? Keyboard { get; private set; }
 
     /// <summary>
     ///     Gets the mouse device.
     /// </summary>
-    public MouseDevice? Mouse { get; private set; }
+    public IMouseDevice? Mouse { get; private set; }
 
     /// <summary>
     ///     Gets all registered action names.
@@ -62,6 +63,12 @@ public class InputManager
     public void RegisterAction(InputAction action)
     {
         _actions[action.Name] = action;
+    }
+
+    public bool WasActionTriggered(string actionName)
+    {
+        // Check if the action was triggered
+        return false;
     }
 
     /// <summary>

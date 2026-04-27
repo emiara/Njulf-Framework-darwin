@@ -1,4 +1,10 @@
-﻿using NjulfFramework.Rendering;
+﻿using Microsoft.Extensions.DependencyInjection;
+using NjulfFramework.Core.DependencyInjection;
+using NjulfFramework.Rendering.DependencyInjection;
+using NjulfFramework.Assets.DependencyInjection;
+using NjulfFramework.Input.DependencyInjection;
+using NjulfFramework.Core.Interfaces.Rendering;
+using NjulfFramework.Rendering;
 using Silk.NET.Maths;
 using Silk.NET.Windowing;
 
@@ -6,7 +12,8 @@ namespace NjulfFramework;
 
 internal static class RendererExample
 {
-    private static VulkanRenderer? _renderer;
+    private static IServiceProvider? _serviceProvider;
+    private static IRenderer? _renderer;
 
     private static void Main(string[] args)
     {
@@ -25,47 +32,67 @@ internal static class RendererExample
             Console.WriteLine("Failed to create window");
             return;
         }
+        
+        // Set up dependency injection
+        var services = new ServiceCollection();
+        
+        services.AddSingleton<IWindow>(window);
+        
+        // Add all framework modules
+        services.AddNjulfFrameworkCore()
+            .AddNjulfFrameworkRendering()
+            .AddNjulfFrameworkAssets()
+            .AddNjulfFrameworkInput();
 
-        _renderer = new VulkanRenderer(window);
+        _serviceProvider = services.BuildServiceProvider();
+        
+        window.Load += () =>
+        {
+            try
+            {
+                // Resolve renderer from DI container
+                _renderer = _serviceProvider.GetRequiredService<IRenderer>();
+                //_renderer.InitializeAsync();
+                
+                _renderer.Load();
+                
+                Console.WriteLine("✓ Renderer initialized");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"✗ Failed to initialize renderer: {ex.Message}");
+                if (ex.InnerException != null) Console.WriteLine($"  Inner: {ex.InnerException.Message}");
+                window.Close();
+            }
+        };
 
-        // Lifecycle callbacks
-        window.Load += OnLoad;
         window.Update += OnUpdate;
         window.Render += OnRender;
         window.Closing += OnClosing;
 
-        window.Run();
-    }
-
-    private static void OnLoad()
-    {
         try
         {
-            _renderer?.Load();
-            Console.WriteLine("✓ Renderer loaded successfully");
-            Console.WriteLine("✓ Vulkan instance created");
-            Console.WriteLine("✓ Swapchain initialized");
-            Console.WriteLine("✓ Render pass created");
-            Console.WriteLine("✓ Graphics pipeline compiled");
-            Console.WriteLine("\nRendering started!");
+            window.Run();
+            Console.WriteLine("✓ Application started successfully");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"✗ Failed to load renderer: {ex.Message}");
+            Console.WriteLine($"✗ Failed to run: {ex.Message}");
             if (ex.InnerException != null) Console.WriteLine($"  Inner exception: {ex.InnerException.Message}");
         }
     }
 
     private static void OnUpdate(double deltaTime)
     {
-        _renderer?.Update(deltaTime);
+        if (_renderer is VulkanRenderer vulkanRenderer)
+            vulkanRenderer.Update(deltaTime);
     }
 
     private static void OnRender(double deltaTime)
     {
         try
         {
-            _renderer?.Draw();
+            _renderer?.RenderFrameAsync();
         }
         catch (Exception ex)
         {

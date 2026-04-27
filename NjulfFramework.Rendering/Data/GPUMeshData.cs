@@ -34,6 +34,11 @@ public struct GPUMeshData
     public uint IndexCount;
 
     /// <summary>
+    ///     Primitive mode (0=TriangleList, 1=LineList, 2=PointList).
+    /// </summary>
+    public uint PrimitiveMode;
+
+    /// <summary>
     ///     Bounding box min corner.
     /// </summary>
     public Vector3 BoundingBoxMin;

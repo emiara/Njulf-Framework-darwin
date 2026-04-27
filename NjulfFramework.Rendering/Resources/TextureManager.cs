@@ -1,12 +1,13 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
+using NjulfFramework.Core.Interfaces.Rendering;
 using NjulfFramework.Rendering.Resources.Handles;
 using Silk.NET.Vulkan;
 using Vma;
 
 namespace NjulfFramework.Rendering.Resources;
 
-public sealed unsafe class TextureManager : IDisposable
+public sealed unsafe class TextureManager : ITextureManager
 {
     private readonly Allocator* _allocator;
     private readonly Device _device;
@@ -238,5 +239,30 @@ public sealed unsafe class TextureManager : IDisposable
         public uint Height;
         public ImageView View;
         public uint Width;
+    }
+
+    public ITextureHandle AllocateTexture(uint width, uint height, ReadOnlySpan<byte> data)
+    {
+        // Allocate texture with RGBA8 format by default for raw data
+        var textureHandle = AllocateTextureWithData(
+            width, 
+            height, 
+            Format.R8G8B8A8Unorm, 
+            ImageUsageFlags.SampledBit | ImageUsageFlags.TransferDstBit,
+            data);
+        
+        return textureHandle;
+    }
+
+    public void FreeTexture(ITextureHandle handle)
+    {
+        if (handle is TextureHandle textureHandle)
+        {
+            FreeTexture(textureHandle);
+        }
+        else
+        {
+            throw new ArgumentException("Handle must be of type TextureHandle", nameof(handle));
+        }
     }
 }

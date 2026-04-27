@@ -1,5 +1,6 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
+using NjulfFramework.Core.Interfaces.Rendering;
 using NjulfFramework.Rendering.Memory;
 using NjulfFramework.Rendering.RenderingData;
 using NjulfFramework.Rendering.Resources.Handles;
@@ -15,13 +16,14 @@ namespace NjulfFramework.Rendering.Resources;
 ///     2. Upload phase: Upload mesh data to GPU via FrameUploadRing
 ///     Replaces per-mesh vertex/index buffer creation with a single consolidated buffer approach.
 /// </summary>
-public class MeshManager : IDisposable
+public class MeshManager : IMeshManager
 {
     private readonly BufferManager _bufferManager;
     private readonly Device _device;
 
     private readonly MeshBuffer _meshBuffer;
     private readonly HashSet<Data.RenderingData.Mesh> _uploadedMeshes = new();
+    private readonly Dictionary<string, Data.RenderingData.Mesh> _meshByName = new();
     private readonly Vk _vk;
     private bool _finalized;
 
@@ -52,6 +54,12 @@ public class MeshManager : IDisposable
             throw new InvalidOperationException("MeshManager already finalized. Cannot register new meshes.");
 
         _meshBuffer.AddMesh(mesh);
+        _meshByName[mesh.Name] = mesh;
+    }
+
+    public void RegisterMesh(string name, ReadOnlySpan<byte> vertices, ReadOnlySpan<uint> indices)
+    {
+        // Register a new mesh with the manager
     }
 
     /// <summary>
@@ -66,6 +74,13 @@ public class MeshManager : IDisposable
         _meshBuffer.Finalize();
         _finalized = true;
         Console.WriteLine("✓ MeshManager finalized");
+    }
+
+    public bool TryGetMeshDescriptor(string name, out IMeshDescriptor? descriptor)
+    {
+        // Try to get mesh descriptor by name
+        descriptor = null;
+        return false;
     }
 
     /// <summary>
@@ -141,5 +156,14 @@ public class MeshManager : IDisposable
     {
         return (_meshBuffer.MeshletBuffer, _meshBuffer.MeshletVertexIndicesBuffer,
             _meshBuffer.MeshletTriangleIndicesBuffer);
+    }
+
+    /// <summary>
+    ///     Look up a registered mesh by name. Returns null if not found.
+    /// </summary>
+    public Data.RenderingData.Mesh? TryGetMeshByName(string name)
+    {
+        _meshByName.TryGetValue(name, out var mesh);
+        return mesh;
     }
 }

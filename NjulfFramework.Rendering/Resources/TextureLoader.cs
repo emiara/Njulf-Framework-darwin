@@ -82,6 +82,11 @@ public static class TextureLoader
             textureType.Equals("diffuse", StringComparison.OrdinalIgnoreCase))
             return true;
 
+        // glTF-specific texture types
+        if (textureType.Equals("BaseColor", StringComparison.OrdinalIgnoreCase) ||
+            textureType.Equals("BASE_COLOR", StringComparison.OrdinalIgnoreCase))
+            return true;
+
         // Check file extension as additional hint
         var extension = Path.GetExtension(texturePath)?.ToLower();
         if (extension == ".jpg" || extension == ".jpeg")
