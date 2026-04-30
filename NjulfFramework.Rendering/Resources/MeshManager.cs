@@ -76,10 +76,14 @@ public class MeshManager : IMeshManager
     /// <summary>
     ///     Register a mesh with the consolidated buffer (before finalization).
     /// </summary>
-    private void RegisterMesh(Data.RenderingData.Mesh mesh)
+    public void RegisterMesh(Data.RenderingData.Mesh mesh)
     {
         if (mesh == null)
             throw new ArgumentNullException(nameof(mesh));
+        
+        // No-op if already registered (same instance)
+        if (_meshByName.TryGetValue(mesh.Name, out var existing) && ReferenceEquals(existing, mesh))
+            return;
     
         _meshBuffer.AddMesh(mesh);
         _meshByName[mesh.Name] = mesh;
@@ -122,6 +126,9 @@ public class MeshManager : IMeshManager
         
         // Reset finalization state
         _finalized = false;
+        
+        // Clear uploaded mesh tracking so all meshes are re-uploaded with new GPU buffers
+        _uploadedMeshes.Clear();
         
         // Perform finalization again with current mesh set
         _meshBuffer.Finalize();

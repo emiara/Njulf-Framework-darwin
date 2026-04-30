@@ -78,6 +78,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     private Buffer _sceneMeshBuffer;
 
     private Buffer _sceneObjectBuffer;
+    private Sampler _defaultSampler;
 
     private SurfaceKHR _surface;
     private ImageLayout[]? _swapchainImageLayouts;
@@ -126,6 +127,9 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             _vulkanContext.VulkanApi.DestroyImageView(_vulkanContext.Device, _depthImageView, null);
         if (_depthImage.Handle != 0)
             Apis.DestroyImage(_vulkanContext.VmaAllocator, _depthImage, null);
+        
+        if (_defaultSampler.Handle != 0)
+            _vulkanContext.VulkanApi.DestroySampler(_vulkanContext.Device, _defaultSampler, null);
 
         if (_vulkanContext != null && _surface.Handle != 0)
             _khrSurface!.DestroySurface(_vulkanContext.Instance, _surface, null);
@@ -251,6 +255,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
                 _descriptorSetLayouts);
             Console.WriteLine("✓ Bindless descriptor heap created");
 
+            CreateDefaultSampler();
+
             InitializeSceneBuffers();
 
             // Register scene buffers in bindless heap
@@ -316,6 +322,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
 
             // Create scene data builder now that all resources are ready
             _sceneBuilder = new SceneDataBuilder(_meshManager, _textureManager, _bindlessHeap);
+            _sceneBuilder.SetDefaultSampler(_defaultSampler);
             Console.WriteLine("✓ Scene data builder created");
 
             // Phase 2: Add test cube to scene
@@ -325,8 +332,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             // AddRenderObject(cube);
             // Console.WriteLine("✓ Test cube added to scene");
 
-            _meshManager.Finalize();
-            Console.WriteLine("✓ Mesh manager finalized");
+            // _meshManager.Finalize();
+            // Console.WriteLine("✓ Mesh manager finalized");
 
             CreateMeshBuffersDescriptorSet();
             UpdateMeshBuffersDescriptorSet();
@@ -411,6 +418,34 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         };
 
         _vulkanContext.VulkanApi.CreateImageView(_vulkanContext.Device, &viewInfo, null, out _depthImageView);
+    }
+    
+    private void CreateDefaultSampler()
+    {
+        var samplerInfo = new SamplerCreateInfo
+        {
+            SType = StructureType.SamplerCreateInfo,
+            MagFilter = Filter.Linear,
+            MinFilter = Filter.Linear,
+            AddressModeU = SamplerAddressMode.Repeat,
+            AddressModeV = SamplerAddressMode.Repeat,
+            AddressModeW = SamplerAddressMode.Repeat,
+            AnisotropyEnable = false,
+            MaxAnisotropy = 1.0f,
+            BorderColor = BorderColor.IntOpaqueBlack,
+            UnnormalizedCoordinates = false,
+            CompareEnable = false,
+            CompareOp = CompareOp.Always,
+            MipmapMode = SamplerMipmapMode.Linear,
+            MipLodBias = 0.0f,
+            MinLod = 0.0f,
+            MaxLod = 0.0f
+        };
+
+        if (_vulkanContext!.VulkanApi.CreateSampler(_vulkanContext.Device, &samplerInfo, null, out _defaultSampler) != Result.Success)
+            throw new InvalidOperationException("Failed to create default sampler");
+
+        Console.WriteLine("✓ Default sampler created");
     }
 
     private void SetupRenderGraph()
@@ -676,9 +711,9 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
 
         if (_meshManager != null)
         {
-            var mesh = obj.Mesh;
-            var vertexBytes = MemoryMarshal.AsBytes<Data.RenderingData.Vertex>(mesh.Vertices);
-            _meshManager.RegisterMesh(mesh.Name, vertexBytes, mesh.Indices);
+            // var mesh = obj.Mesh;
+            // var vertexBytes = MemoryMarshal.AsBytes<Data.RenderingData.Vertex>(mesh.Vertices);
+            _meshManager.RegisterMesh(obj.Mesh);
         }
 
         Console.WriteLine($"Added render object: {obj.Name}");

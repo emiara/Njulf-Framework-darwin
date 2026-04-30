@@ -161,6 +161,16 @@ public class MeshBuffer : IDisposable
             _meshletVertexIndices.Clear();
             _meshletTriangleIndices.Clear();
             _meshletDataUploaded = false;
+            
+            // Reset totals so offsets are recomputed correctly
+            TotalVertices = 0;
+            TotalIndices = 0;
+
+            // Recompute offsets for all registered meshes
+            var meshKeys = _meshes.Keys.ToList();
+            _meshes.Clear();
+            foreach (var mesh in meshKeys)
+                AddMesh(mesh);
         }
         else
         {
