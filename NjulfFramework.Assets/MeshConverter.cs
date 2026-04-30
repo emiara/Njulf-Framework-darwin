@@ -89,9 +89,8 @@ public class MeshConverter : IModelConverter
 
         // Convert vertices
         var vertexCount = (int)assimpMesh->MNumVertices;
-        var vertices = new FrameworkMesh.Vertex[vertexCount];
+        var vertices = new MeshVertex[vertexCount];
 
-        // Get pointer to first texture coordinate channel
         var texCoords0 = assimpMesh->MTextureCoords.Element0;
 
         for (var i = 0; i < vertexCount; i++)
@@ -108,10 +107,10 @@ public class MeshConverter : IModelConverter
                 texCoord = new Vector2(tc.X, tc.Y);
             }
 
-            vertices[i] = new FrameworkMesh.Vertex
+            vertices[i] = new MeshVertex
             {
                 Position = position,
-                Normal = normal,
+                Normal   = normal,
                 TexCoord = texCoord
             };
         }
@@ -174,7 +173,7 @@ public class MeshConverter : IModelConverter
     /// <summary>
     ///     Calculate bounding box for vertices
     /// </summary>
-    private (Vector3 min, Vector3 max) CalculateBoundingBox(FrameworkMesh.Vertex[] vertices)
+    private (Vector3 min, Vector3 max) CalculateBoundingBox(MeshVertex[] vertices)
     {
         if (vertices == null || vertices.Length == 0)
             return (Vector3.Zero, Vector3.One);

@@ -2,6 +2,8 @@
 
 using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using NjulfFramework.Core.Interfaces.Assets;
 using NjulfFramework.Core.Interfaces.Rendering;
 using NjulfFramework.Rendering.Core;
 using NjulfFramework.Rendering.Data;
@@ -19,7 +21,7 @@ using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace NjulfFramework.Rendering;
 
-public unsafe class VulkanRenderer : IRenderer
+public unsafe class VulkanRenderer : IRenderer, ISceneLoader
 {
     private const uint MaxFramesInFlight = 2;
 
@@ -317,11 +319,11 @@ public unsafe class VulkanRenderer : IRenderer
             Console.WriteLine("✓ Scene data builder created");
 
             // Phase 2: Add test cube to scene
-            var cubeMesh = Data.RenderingData.Mesh.CreateCube();
-            var material = new Data.RenderingData.Material("default", "Shaders/test_vert.spv");
-            var cube = new Data.RenderingData.RenderObject("test_cube", cubeMesh, material, Matrix4x4.Identity);
-            AddRenderObject(cube);
-            Console.WriteLine("✓ Test cube added to scene");
+            // var cubeMesh = Data.RenderingData.Mesh.CreateCube();
+            // var material = new Data.RenderingData.Material("default", "Shaders/test_vert.spv");
+            // var cube = new Data.RenderingData.RenderObject("test_cube", cubeMesh, material, Matrix4x4.Identity);
+            // AddRenderObject(cube);
+            // Console.WriteLine("✓ Test cube added to scene");
 
             _meshManager.Finalize();
             Console.WriteLine("✓ Mesh manager finalized");
@@ -500,11 +502,11 @@ public unsafe class VulkanRenderer : IRenderer
     public void Update(double deltaTime)
     {
         // Rotate the test cube
-        if (_renderObjects.TryGetValue("test_cube", out var cube))
-        {
-            var rotation = Matrix4x4.CreateRotationY((float)deltaTime);
-            cube.Transform = rotation * cube.Transform;
-        }
+        // if (_renderObjects.TryGetValue("test_cube", out var cube))
+        // {
+        //     var rotation = Matrix4x4.CreateRotationY((float)deltaTime);
+        //     cube.Transform = rotation * cube.Transform;
+        // }
 
         // Add test lights (temporary - for demonstration)
         if (_frameIndex == 0 && LightManager != null)
@@ -672,9 +674,25 @@ public unsafe class VulkanRenderer : IRenderer
 
         _renderObjects[obj.Name] = obj;
 
-        if (_meshManager != null) _meshManager.RegisterMesh(obj.Mesh);
+        if (_meshManager != null)
+        {
+            var mesh = obj.Mesh;
+            var vertexBytes = MemoryMarshal.AsBytes<Data.RenderingData.Vertex>(mesh.Vertices);
+            _meshManager.RegisterMesh(mesh.Name, vertexBytes, mesh.Indices);
+        }
 
         Console.WriteLine($"Added render object: {obj.Name}");
+    }
+
+    /// <summary>
+    ///     Re-finalizes the mesh manager and updates the mesh buffers descriptor set.
+    ///     Call this after adding new render objects post-Load().
+    /// </summary>
+    public void FinalizeAndUpdateMeshBuffers()
+    {
+        _meshManager?.FinalizeOrReFinalize();
+        UpdateMeshBuffersDescriptorSet();
+        Console.WriteLine("✓ Mesh buffers re-finalized after model load");
     }
 
     /// <summary>
@@ -1232,5 +1250,55 @@ public unsafe class VulkanRenderer : IRenderer
                 "CreateSceneDataBuilder() must be called after Load() has completed.");
 
         return new SceneDataBuilder(_meshManager, _textureManager, _bindlessHeap);
+    }
+
+    public void LoadModelIntoScene(IModel model)
+    {
+        if (model == null) throw new ArgumentNullException(nameof(model));
+
+        var meshes    = model.Meshes.ToList();
+        var materials = model.Materials.ToList();
+
+        for (int i = 0; i < meshes.Count; i++)
+        {
+            var iMesh = meshes[i];
+            var iMat  = i < materials.Count ? materials[i] : null;
+
+            // Map IMesh → RenderingData.Mesh
+            var rdVertices = new Data.RenderingData.Vertex[iMesh.Vertices.Length];
+            for (int v = 0; v < iMesh.Vertices.Length; v++)
+                rdVertices[v] = new Data.RenderingData.Vertex(
+                    iMesh.Vertices[v].Position,
+                    iMesh.Vertices[v].Normal,
+                    iMesh.Vertices[v].TexCoord);
+
+            var rdMesh = new Data.RenderingData.Mesh(
+                iMesh.Name,
+                rdVertices,
+                iMesh.Indices,
+                iMesh.BoundingBoxMin,
+                iMesh.BoundingBoxMax);
+
+            // Map IMaterial → RenderingData.Material
+            var rdMat = new Data.RenderingData.Material(
+                iMat?.Name ?? "default",
+                "Shaders/test_vert.spv",
+                iMat?.BaseColorTexturePath ?? string.Empty);
+
+            if (iMat != null)
+            {
+                rdMat.BaseColorFactor   = iMat.BaseColorFactor;
+                rdMat.MetallicFactor    = iMat.MetallicFactor;
+                rdMat.RoughnessFactor   = iMat.RoughnessFactor;
+                rdMat.NormalTexturePath = iMat.NormalTexturePath;
+                rdMat.EmissiveFactor    = iMat.EmissiveFactor;
+            }
+
+            AddRenderObject(new Data.RenderingData.RenderObject(
+                $"model_{model.Name}_{i}_{iMesh.Name}", rdMesh, rdMat, Matrix4x4.Identity));
+        }
+
+        FinalizeAndUpdateMeshBuffers();
+        Console.WriteLine($"✓ Model '{model.Name}' loaded: {meshes.Count} mesh(es) added to scene");
     }
 }

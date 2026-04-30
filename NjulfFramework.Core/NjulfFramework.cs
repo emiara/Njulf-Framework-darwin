@@ -1,6 +1,10 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
-using BepuPhysics;
+// SPDX-License-Identifier: MPL-2.0
+
+using Microsoft.Extensions.DependencyInjection;
+using NjulfFramework.Core.Interfaces.Assets;
+using NjulfFramework.Core.Interfaces.Rendering;
 using Silk.NET.Maths;
 using Silk.NET.Windowing;
 
@@ -12,28 +16,54 @@ namespace NjulfFramework.Core;
 /// </summary>
 public abstract class GameFramework
 {
-    private const uint WindowWidth = 1280;
-    private const uint WindowHeight = 720;
-    private const string WindowTitle = "Njulf Framework Game";
+    private const int DefaultWindowWidth = 1280;
+    private const int DefaultWindowHeight = 720;
+
+    private IServiceProvider? _serviceProvider;
+
     protected IWindow? Window { get; private set; }
-    protected Simulation? PhysicsSimulation { get; private set; }
+    protected IRenderer? Renderer { get; private set; }
+    protected IContentManager? Content { get; private set; }   // ← replaces raw AssetLoader
     protected float DeltaTime { get; private set; }
+
+    /// <summary>
+    ///     Override to customise the window before it is created.
+    /// </summary>
+    protected virtual WindowOptions ConfigureWindow() =>
+        WindowOptions.DefaultVulkan with
+        {
+            Title = "Njulf Framework Game",
+            Size = new Vector2D<int>(DefaultWindowWidth, DefaultWindowHeight),
+            VSync = true,
+            WindowBorder = WindowBorder.Fixed
+        };
+
+    /// <summary>
+    ///     Override to register additional services into the DI container.
+    /// </summary>
+    protected virtual void ConfigureServices(IServiceCollection services) { }
 
     /// <summary>
     ///     Initializes and runs the game framework.
     /// </summary>
     public void Run()
     {
-        InitializeWindow();
-        InitializePhysics();
+        Window = Silk.NET.Windowing.Window.Create(ConfigureWindow());
 
-        if (Window == null)
-            throw new InvalidOperationException("Window failed to initialize");
+        if (Window is null)
+            throw new InvalidOperationException("Window failed to initialize.");
 
-        Load();
+        // Build DI container
+        var services = new ServiceCollection();
+        services.AddSingleton<IWindow>(Window);
+        RegisterFrameworkServices(services);
+        ConfigureServices(services);
+        _serviceProvider = services.BuildServiceProvider();
 
-        Window.Update += OnUpdate;
-        Window.Render += OnRender;
+        // Wire window events
+        Window.Load    += OnWindowLoad;
+        Window.Update  += OnUpdate;
+        Window.Render  += OnRender;
         Window.Closing += OnClosing;
 
         Window.Run();
@@ -42,108 +72,108 @@ public abstract class GameFramework
     }
 
     /// <summary>
-    ///     Initializes the Silk.NET window with Vulkan rendering context.
+    ///     Registers the built-in framework services (rendering, assets, input, …).
+    ///     Override and call base to add or replace registrations.
     /// </summary>
-    private void InitializeWindow()
+    protected virtual void RegisterFrameworkServices(IServiceCollection services)
     {
-        var options = WindowOptions.Default with
+        // Subclasses (or the concrete game project) call the standard extension
+        // methods here, e.g.:
+        //   services.AddNjulfFrameworkRendering()
+        //           .AddNjulfFrameworkAssets()
+        //           .AddNjulfFrameworkInput();
+        //
+        // They are not called from this base class so that the framework library
+        // itself does not carry a hard dependency on every module.
+    }
+
+    // -------------------------------------------------------------------------
+    // Private event handlers
+    // -------------------------------------------------------------------------
+
+    private void OnWindowLoad()
+    {
+        try
         {
-            Title = WindowTitle,
-            Size = new Vector2D<int>((int)WindowWidth, (int)WindowHeight),
-            VSync = true,
-            API = new GraphicsAPI
-            {
-                API = ContextAPI.Vulkan,
-                Profile = ContextProfile.Core,
-                Flags = ContextFlags.Default
-            }
-        };
+            Renderer = _serviceProvider!.GetService<IRenderer>();
+            Content  = _serviceProvider!.GetService<IContentManager>();   // ← resolve ContentManager
 
-        Window = Silk.NET.Windowing.Window.Create(options);
+            Renderer?.Load();
+
+            Load();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"✗ Load failed: {ex.Message}");
+            if (ex.InnerException != null)
+                Console.WriteLine($"  Inner: {ex.InnerException.Message}");
+            Window?.Close();
+        }
     }
 
-    /// <summary>
-    ///     Initializes the BepiPhysics2 simulation.
-    /// </summary>
-    private void InitializePhysics()
-    {
-        // Physics simulation will be configured here
-        // Using BepiPhysics2 for 3D rigid body physics
-        // TODO: Create simulation with proper callbacks and settings
-    }
-
-    /// <summary>
-    ///     Called when the window closes.
-    /// </summary>
-    private void OnClosing()
-    {
-        Window?.Close();
-    }
-
-    /// <summary>
-    ///     Called once per frame for update logic.
-    /// </summary>
     private void OnUpdate(double deltaTimeSeconds)
     {
         DeltaTime = (float)deltaTimeSeconds;
-
-        // Update physics simulation
-        UpdatePhysics(DeltaTime);
-
-        // Call the game's update method
         Update(DeltaTime);
     }
 
-    /// <summary>
-    ///     Called once per frame for rendering.
-    /// </summary>
     private void OnRender(double deltaTimeSeconds)
     {
-        // Clear the rendering context
-        // TODO: Implement Vulkan clear operations
-
-        // Call the game's draw method
-        Draw();
-
-        // Present the rendered frame
-        // TODO: Implement Vulkan presentation
+        try
+        {
+            Renderer?.RenderFrameAsync();
+            Draw();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"✗ Rendering error: {ex.Message}");
+        }
     }
 
-    /// <summary>
-    ///     Updates the physics simulation.
-    /// </summary>
-    private void UpdatePhysics(float deltaTime)
+    private void OnClosing()
     {
-        if (PhysicsSimulation == null)
-            return;
-
-        // Step the physics simulation
-        // TODO: Implement BepiPhysics2 timestep
+        // Handled in Cleanup()
     }
 
+    // -------------------------------------------------------------------------
+    // Abstract / virtual lifecycle hooks for subclasses
+    // -------------------------------------------------------------------------
+
     /// <summary>
-    ///     Abstract method called once when the game first loads.
-    ///     Override this to initialize your game resources.
+    ///     Called once after the window and renderer are ready.
+    ///     Override to load your game resources.
     /// </summary>
     public abstract void Load();
 
     /// <summary>
-    ///     Abstract method called every frame for game logic updates.
+    ///     Called every frame for game logic updates.
     /// </summary>
     public abstract void Update(float deltaTime);
 
     /// <summary>
-    ///     Abstract method called every frame for rendering.
+    ///     Called every frame for custom rendering logic.
     /// </summary>
     public abstract void Draw();
 
     /// <summary>
     ///     Called when the framework is shutting down.
-    ///     Override to cleanup resources.
+    ///     Override to release additional resources; always call base.
     /// </summary>
     public virtual void Cleanup()
     {
-        PhysicsSimulation?.Dispose();
+        try
+        {
+            Renderer?.Dispose();
+            Console.WriteLine("\n✓ Renderer cleaned up");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"✗ Error during cleanup: {ex.Message}");
+        }
+
         Window?.Dispose();
+
+        if (_serviceProvider is IDisposable disposable)
+            disposable.Dispose();
     }
 }

@@ -58,24 +58,14 @@ public class FrameworkModel : IModel
         public string Name { get; set; } = "Mesh";
         public BoundingBox Bounds => new BoundingBox(BoundingBoxMin, BoundingBoxMax);
         public string MaterialName { get; set; } = string.Empty;
-        public Vertex[] Vertices { get; set; } = Array.Empty<Vertex>();
+        public MeshVertex[] Vertices { get; set; } = Array.Empty<MeshVertex>();   // ← was FrameworkMesh.Vertex[]
         public uint[] Indices { get; set; } = Array.Empty<uint>();
         public Vector3 BoundingBoxMin { get; set; } = Vector3.Zero;
         public Vector3 BoundingBoxMax { get; set; } = Vector3.One;
         public int MaterialIndex { get; set; } = 0;
         public PrimitiveMode PrimitiveMode { get; set; } = PrimitiveMode.Triangles;
 
-    /// <summary>
-    ///     Vertex structure matching renderer's Vertex format
-    /// </summary>
-    public struct Vertex
-    {
-        public Vector3 Position;
-        public Vector3 Normal;
-
-        public Vector2 TexCoord;
-        // Additional attributes as needed
-    }
+    // Removed the inner Vertex struct — use MeshVertex from IMesh instead
 }
 
 /// <summary>

@@ -15,6 +15,7 @@ public static class RenderingServiceCollectionExtensions
     {
         services.AddSingleton<VulkanRenderer>();
         services.AddSingleton<IRenderer>(sp => sp.GetRequiredService<VulkanRenderer>());
+        services.AddSingleton<ISceneLoader>(sp => sp.GetRequiredService<VulkanRenderer>());
 
         return services;
     }

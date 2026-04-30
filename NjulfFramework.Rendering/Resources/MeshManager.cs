@@ -1,5 +1,6 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
+using System.Runtime.InteropServices;
 using NjulfFramework.Core.Interfaces.Rendering;
 using NjulfFramework.Rendering.Memory;
 using NjulfFramework.Rendering.RenderingData;
@@ -35,6 +36,7 @@ public class MeshManager : IMeshManager
 
         _meshBuffer = new MeshBuffer(bufferManager, vk, device);
     }
+    
 
     public void Dispose()
     {
@@ -42,24 +44,57 @@ public class MeshManager : IMeshManager
         _uploadedMeshes.Clear();
     }
 
+    public void RegisterMesh(string name, ReadOnlySpan<byte> vertices, ReadOnlySpan<uint> indices)
+    {
+        if (name == null)
+            throw new ArgumentNullException(nameof(name));
+
+        var typedVertices = MemoryMarshal.Cast<byte, Data.RenderingData.Vertex>(vertices);
+
+        var vertexArray = typedVertices.ToArray();
+        var indexArray  = indices.ToArray();
+
+        // Compute bounding box from vertex positions
+        var boundsMin = new System.Numerics.Vector3(float.MaxValue);
+        var boundsMax = new System.Numerics.Vector3(float.MinValue);
+        foreach (var v in typedVertices)
+        {
+            boundsMin = System.Numerics.Vector3.Min(boundsMin, v.Position);
+            boundsMax = System.Numerics.Vector3.Max(boundsMax, v.Position);
+        }
+
+        if (vertexArray.Length == 0)
+        {
+            boundsMin = System.Numerics.Vector3.Zero;
+            boundsMax = System.Numerics.Vector3.Zero;
+        }
+
+        var mesh = new Data.RenderingData.Mesh(name, vertexArray, indexArray, boundsMin, boundsMax);
+        RegisterMesh(mesh);
+    }
+    
     /// <summary>
     ///     Register a mesh with the consolidated buffer (before finalization).
     /// </summary>
-    public void RegisterMesh(Data.RenderingData.Mesh mesh)
+    private void RegisterMesh(Data.RenderingData.Mesh mesh)
     {
         if (mesh == null)
             throw new ArgumentNullException(nameof(mesh));
-
-        if (_finalized)
-            throw new InvalidOperationException("MeshManager already finalized. Cannot register new meshes.");
-
+    
         _meshBuffer.AddMesh(mesh);
         _meshByName[mesh.Name] = mesh;
     }
-
-    public void RegisterMesh(string name, ReadOnlySpan<byte> vertices, ReadOnlySpan<uint> indices)
+    
+    public void FinalizeOrReFinalize()
     {
-        // Register a new mesh with the manager
+        if (!_finalized)
+        {
+            Finalize();
+        }
+        else
+        {
+            ResetAndFinalize();
+        }
     }
 
     /// <summary>
@@ -74,6 +109,25 @@ public class MeshManager : IMeshManager
         _meshBuffer.Finalize();
         _finalized = true;
         Console.WriteLine("✓ MeshManager finalized");
+    }
+
+    /// <summary>
+    /// Reset the finalization state and perform dynamic finalization.
+    /// Allows adding new meshes after initial finalization.
+    /// </summary>
+    public void ResetAndFinalize()
+    {
+        if (!_finalized)
+            throw new InvalidOperationException("MeshManager not initially finalized");
+        
+        // Reset finalization state
+        _finalized = false;
+        
+        // Perform finalization again with current mesh set
+        _meshBuffer.Finalize();
+        _finalized = true;
+        
+        Console.WriteLine("✓ MeshManager re-finalized for dynamic loading");
     }
 
     public bool TryGetMeshDescriptor(string name, out IMeshDescriptor? descriptor)

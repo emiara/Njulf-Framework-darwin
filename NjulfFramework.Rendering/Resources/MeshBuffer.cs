@@ -109,9 +109,6 @@ public class MeshBuffer : IDisposable
     /// </summary>
     public void AddMesh(Data.RenderingData.Mesh mesh)
     {
-        if (_finalized)
-            throw new InvalidOperationException("Cannot add meshes after MeshBuffer is finalized");
-
         if (mesh == null)
             throw new ArgumentNullException(nameof(mesh));
 
@@ -140,13 +137,35 @@ public class MeshBuffer : IDisposable
     /// </summary>
     public void Finalize()
     {
-        if (_finalized)
-            throw new InvalidOperationException("MeshBuffer already finalized");
-
         if (_meshes.Count == 0)
             throw new InvalidOperationException("No meshes registered");
 
-        Console.WriteLine($"Finalizing MeshBuffer: {TotalVertices} total vertices, {TotalIndices} total indices");
+        if (_finalized)
+        {
+            // Re-finalization: Clean up existing buffers first
+            Console.WriteLine("Re-finalizing MeshBuffer...");
+        
+        if (VertexBufferHandle.IsValid)
+            _bufferManager.FreeBuffer(VertexBufferHandle);
+        if (IndexBufferHandle.IsValid)
+            _bufferManager.FreeBuffer(IndexBufferHandle);
+        if (MeshletBufferHandle.IsValid)
+            _bufferManager.FreeBuffer(MeshletBufferHandle);
+        if (MeshletVertexIndicesBufferHandle.IsValid)
+            _bufferManager.FreeBuffer(MeshletVertexIndicesBufferHandle);
+        if (MeshletTriangleIndicesBufferHandle.IsValid)
+            _bufferManager.FreeBuffer(MeshletTriangleIndicesBufferHandle);
+
+            // Reset meshlet data
+            _meshlets.Clear();
+            _meshletVertexIndices.Clear();
+            _meshletTriangleIndices.Clear();
+            _meshletDataUploaded = false;
+        }
+        else
+        {
+            Console.WriteLine($"Finalizing MeshBuffer: {TotalVertices} total vertices, {TotalIndices} total indices");
+        }
 
         BuildMeshlets();
 
