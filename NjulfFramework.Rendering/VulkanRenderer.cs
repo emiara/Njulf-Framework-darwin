@@ -102,11 +102,12 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
 
     public void Dispose()
     {
-        if (_vulkanContext != null) _vulkanContext.VulkanApi.DeviceWaitIdle(_vulkanContext.Device);
+        //if (_vulkanContext != null) _vulkanContext.VulkanApi.DeviceWaitIdle(_vulkanContext.Device);
 
         // Phase 2: Dispose resource managers
         _descriptorManager?.Dispose();
         _meshManager?.Dispose();
+        _textureManager?.Dispose();
         _bufferManager?.Dispose();
         LightManager?.Dispose();
         _tiledLightCullingPass?.Dispose();
@@ -126,7 +127,10 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         if (_depthImageView.Handle != 0)
             _vulkanContext.VulkanApi.DestroyImageView(_vulkanContext.Device, _depthImageView, null);
         if (_depthImage.Handle != 0)
-            Apis.DestroyImage(_vulkanContext.VmaAllocator, _depthImage, null);
+        {
+            Apis.DestroyImage(_vulkanContext.VmaAllocator, _depthImage, _depthAllocation);
+            _depthAllocation = null;
+        }
         
         if (_defaultSampler.Handle != 0)
             _vulkanContext.VulkanApi.DestroySampler(_vulkanContext.Device, _defaultSampler, null);
@@ -336,7 +340,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             // Console.WriteLine("✓ Mesh manager finalized");
 
             CreateMeshBuffersDescriptorSet();
-            UpdateMeshBuffersDescriptorSet();
+            //UpdateMeshBuffersDescriptorSet();
 
             Debug.WriteLine("Vulkan renderer initialized successfully");
             Console.WriteLine("\n✓ Renderer fully initialized - rendering started!\n");

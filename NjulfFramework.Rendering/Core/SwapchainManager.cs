@@ -64,6 +64,7 @@ public class SwapchainManager : IDisposable
         foreach (var imageView in SwapchainImageViews) _vk.DestroyImageView(_device, imageView, null);
 
         if (_swapchain.Handle != 0) _khrSwapchain!.DestroySwapchain(_device, _swapchain, null);
+        SwapchainImages = Array.Empty<Image>();
     }
 
     private unsafe void CreateSwapchain(uint width, uint height)

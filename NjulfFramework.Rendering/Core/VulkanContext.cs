@@ -44,6 +44,9 @@ public unsafe class VulkanContext : IDisposable
 
     public void Dispose()
     {
+        if (_device.Handle != 0)
+            VulkanApi.DeviceWaitIdle(_device);
+
         if (VmaAllocator != null)
         {
             Apis.DestroyAllocator(VmaAllocator);
@@ -52,7 +55,6 @@ public unsafe class VulkanContext : IDisposable
 
         if (_device.Handle != 0)
         {
-            VulkanApi.DeviceWaitIdle(_device);
             VulkanApi.DestroyDevice(_device, null);
         }
 

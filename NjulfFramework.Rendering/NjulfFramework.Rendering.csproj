@@ -28,10 +28,6 @@
     </ItemGroup>
 
     <ItemGroup>
-        <Folder Include="Resources\GLTF\"/>
-    </ItemGroup>
-
-    <ItemGroup>
         <None Update="Shaders\triangle.frag">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
