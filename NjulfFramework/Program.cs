@@ -9,6 +9,7 @@ using NjulfFramework.Rendering.DependencyInjection;
 using Silk.NET.Maths;
 using Silk.NET.Windowing;
 using System.Numerics;
+using NjulfFramework.Rendering.Core;
 
 namespace NjulfFramework;
 
@@ -37,7 +38,12 @@ internal sealed class RendererExample : GameFramework
 
     public override void Load()
     {
-        Console.WriteLine("✓ Renderer initialized");
+        var camera = new Camera(
+            position: new Vector3(0, 0, -5),
+            rotation: Quaternion.Identity,
+            fovY: MathF.PI / 4f,  // 45° vertical FOV (radians)
+            aspectRatio: 16f / 9f  // Defaults to 1.0f if omitted
+        );
 
         // One line — identical feel to MonoGame's Content.Load<T>()
         Content?.Load<IModel>(GltfModelPath);

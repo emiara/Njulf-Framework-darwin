@@ -35,12 +35,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
 
     private SceneDataBuilder? _sceneBuilder;
 
-    // Camera matrices
-    private readonly Matrix4x4 _viewMatrix = Matrix4x4.CreateLookAt(
-    new Vector3(0, 2, 3), //new Vector3(0, 2, 3),
-    Vector3.Zero,
-    Vector3.UnitY);
-
+    // Camera
+    private readonly Camera _camera;
     private readonly VulkanContext? _vulkanContext;
     private readonly IWindow _window;
     private BindlessDescriptorHeap? _bindlessHeap;
@@ -70,8 +66,6 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     private MeshManager? _meshManager;
     private MeshPipeline? _meshPipeline;
 
-    private Matrix4x4 _projectionMatrix;
-
     private RenderGraph? _renderGraph;
     private RenderPassManager? _renderPassManager;
     private Buffer _sceneMaterialBuffer;
@@ -86,9 +80,10 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     private SynchronizationManager? _synchronizationManager;
     private TiledLightCullingPass? _tiledLightCullingPass;
 
-    public VulkanRenderer(IWindow window)
+    public VulkanRenderer(IWindow window, Camera camera)
     {
         _window = window ?? throw new ArgumentNullException(nameof(window));
+        _camera = camera ?? throw new ArgumentNullException(nameof(camera));
 
         _vulkanContext = new VulkanContext();
         _bufferManager = new BufferManager(_vulkanContext.VulkanApi, _vulkanContext.VmaAllocator);
@@ -353,11 +348,6 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             throw;
         }
 
-        _projectionMatrix = Matrix4x4.CreatePerspectiveFieldOfView(
-            MathF.PI / 4,
-            _window.Size.X / (float)_window.Size.Y,
-            0.1f,
-            100f);
     }
 
     private void CreateDepthResources()
@@ -662,10 +652,10 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             DepthAttachmentView = _depthImageView,
             FrameIndex = frameIndex,
             VisibleObjects = _renderObjects.Values.Where(o => o.Visible).ToList(),
-            ViewProjection = _viewMatrix * _projectionMatrix,
-            View = _viewMatrix,
-            Projection = _projectionMatrix,
-            CameraPosition = new Vector3(0, 2, 3),
+            ViewProjection = _camera.GetViewMatrix() * _camera.GetProjectionMatrix(),
+            View = _camera.GetViewMatrix(),
+            Projection = _camera.GetProjectionMatrix(),
+            CameraPosition = _camera.GetPosition(),
             BindlessHeap = _bindlessHeap,
             MeshManager = _meshManager,
             MeshBuffersSet = _meshBuffersDescriptorSet,
@@ -785,10 +775,10 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             VisibleObjects = _renderObjects.Values
                 .Where(obj => obj != null && obj.Visible)
                 .ToList(),
-            ViewProjection = _viewMatrix * _projectionMatrix,
-            View = _viewMatrix,
-            Projection = _projectionMatrix,
-            CameraPosition = new Vector3(0, 2, 3),
+            ViewProjection = _camera.GetViewMatrix() * _camera.GetProjectionMatrix(),
+            View = _camera.GetViewMatrix(),
+            Projection = _camera.GetProjectionMatrix(),
+            CameraPosition = _camera.GetPosition(),
             BindlessHeap = _bindlessHeap,
             MeshManager = _meshManager,
             MeshBuffersSet = _meshBuffersDescriptorSet,
@@ -894,8 +884,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             var pushConstants = new Data.RenderingData.PushConstants
             {
                 Model = renderObject.Transform,
-                View = _viewMatrix,
-                Projection = _projectionMatrix,
+                View = _camera.GetViewMatrix(),
+                Projection = _camera.GetProjectionMatrix(),
                 MaterialIndex = 0,
                 VertexOffset = meshEntry.VertexOffset,
                 IndexOffset = meshEntry.IndexOffset,
