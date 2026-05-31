@@ -108,50 +108,34 @@ public class DynamicMeshPass : RenderGraphPass
             };
             _vk.CmdSetScissor(cmd, 0, 1, &scissor);
 
-            foreach (var obj in ctx.VisibleObjects)
+            if (ctx.MeshManager == null || ctx.SceneDataBuilder == null || ctx.MeshletDrawCount == 0)
+                return;
+
+            var pushConstants = new Data.RenderingData.PushConstants
             {
-                if (obj?.Mesh == null || ctx.MeshManager == null || obj.Material == null)
-                    continue;
+                View = ctx.View,
+                Projection = ctx.Projection,
+                ScreenWidth = ctx.Width,
+                ScreenHeight = ctx.Height,
+                DebugMeshlets = 0,
+                LightCount = ctx.LightCount,
+                LightBufferIndex = ctx.LightBufferIndex,
+                TiledLightHeaderBufferIndex = ctx.TiledLightHeaderBufferIndex,
+                TiledLightIndicesBufferIndex = ctx.TiledLightIndicesBufferIndex,
+                InstanceBufferIndex = ctx.InstanceBufferIndex,
+                MeshletDrawBufferIndex = ctx.MeshletDrawBufferIndex,
+                MeshletDrawCount = ctx.MeshletDrawCount,
+                Pad0 = 0,
+                Pad1 = 0
+            };
 
-                var meshEntry = ctx.MeshManager.GetOrCreateMeshGpu(obj.Mesh);
+            _vk.CmdPushConstants(cmd, _pipeline.PipelineLayout,
+                ShaderStageFlags.MeshBitExt | ShaderStageFlags.FragmentBit | ShaderStageFlags.TaskBitExt,
+                0, (uint)Marshal.SizeOf<Data.RenderingData.PushConstants>(), &pushConstants);
 
-                // Get material index from scene data builder
-                var materialIndex = ctx.SceneDataBuilder?.GetMaterialIndex(obj.Material) ?? 0;
-
-                var pushConstants = new Data.RenderingData.PushConstants
-                {
-                    Model = obj.Transform,
-                    View = ctx.View,
-                    Projection = ctx.Projection,
-                    MaterialIndex = materialIndex,
-                    VertexOffset = meshEntry.VertexOffset,
-                    IndexOffset = meshEntry.IndexOffset,
-                    IndexCount = meshEntry.IndexCount,
-                    VertexCount = meshEntry.VertexCount,
-                    MeshletOffset = meshEntry.MeshletOffset,
-                    MeshletCount = meshEntry.MeshletCount,
-                    MeshBoundsRadius = meshEntry.BoundsRadius,
-                    ScreenWidth = ctx.Width,
-                    ScreenHeight = ctx.Height,
-                    DebugMeshlets = 0,
-                    LightCount = ctx.LightCount,
-                    LightBufferIndex = ctx.LightBufferIndex,
-                    TiledLightHeaderBufferIndex = ctx.TiledLightHeaderBufferIndex,
-                    TiledLightIndicesBufferIndex = ctx.TiledLightIndicesBufferIndex,
-                    Padding = 0
-                };
-
-                // Industry standard: Use the actual size of the PushConstants struct
-                _vk.CmdPushConstants(cmd, _pipeline.PipelineLayout,
-                    ShaderStageFlags.MeshBitExt | ShaderStageFlags.FragmentBit | ShaderStageFlags.TaskBitExt,
-                    0, (uint)Marshal.SizeOf<Data.RenderingData.PushConstants>(), &pushConstants);
-
-                if (meshEntry.MeshletCount == 0)
-                    continue;
-
-                // One task workgroup; the task shader emits meshletCount mesh workgroups.
-                _meshShader.CmdDrawMeshTask(cmd, 1, 1, 1);
-            }
+            // One task workgroup per (instance, meshlet) draw entry.
+            // (Switch to CmdDrawMeshTasksIndirectCount later when culling moves fully GPU-side.)
+            _meshShader.CmdDrawMeshTask(cmd, ctx.MeshletDrawCount, 1, 1);
         }
         finally
         {

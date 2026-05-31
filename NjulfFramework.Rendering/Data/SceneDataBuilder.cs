@@ -18,6 +18,8 @@ namespace NjulfFramework.Rendering.Data;
 public class SceneDataBuilder : ISceneDataBuilder
 {
     private readonly List<GPUMaterial> _materialData = new();
+    private readonly List<GPUInstanceData> _instanceData = new();
+    private readonly List<GPUMeshletDraw> _meshletDraws = new();
 
     // Cache to avoid duplicate materials/meshes
     private readonly Dictionary<RenderingData.Material, uint> _materialIndexMap = new();
@@ -54,6 +56,15 @@ public class SceneDataBuilder : ISceneDataBuilder
 
     public IReadOnlyList<GPUMaterial> MaterialData => _materialData.AsReadOnly();
     public IReadOnlyList<GPUMeshData> MeshData => _meshData.AsReadOnly();
+    
+    /// <summary> Per-frame instance records (GPU-driven). </summary>
+    public IReadOnlyList<GPUInstanceData> InstanceData => _instanceData.AsReadOnly();
+
+    /// <summary> Per-frame flat (instance, meshlet) draw list (GPU-driven). </summary>
+    public IReadOnlyList<GPUMeshletDraw> MeshletDraws => _meshletDraws.AsReadOnly();
+
+    /// <summary> Total number of meshlet draws this frame (== task workgroups to dispatch). </summary>
+    public uint MeshletDrawCount => (uint)_meshletDraws.Count;
 
     /// <summary>
     ///     Get the material index for a given material.
@@ -109,6 +120,8 @@ public class SceneDataBuilder : ISceneDataBuilder
         _objectData.Clear();
         _materialData.Clear();
         _meshData.Clear();
+        _instanceData.Clear();
+        _meshletDraws.Clear();
         _materialIndexMap.Clear();
         _meshIndexMap.Clear();
         // NOTE: _texturePathToIndexMap is NOT cleared here intentionally.
@@ -167,6 +180,30 @@ public class SceneDataBuilder : ISceneDataBuilder
         );
 
         _objectData.Add(gpuObjectData);
+        
+        if (_meshManager != null)
+        {
+            var entry = _meshManager.GetOrCreateMeshGpu(mesh);
+            var instanceIndex = (uint)_instanceData.Count;
+
+            _instanceData.Add(new GPUInstanceData
+            {
+                Model = transform,
+                MaterialIndex = materialIdx,
+                MeshletBaseOffset = entry.MeshletOffset,
+                MeshletCount = entry.MeshletCount,
+                Pad = 0
+            });
+
+            for (uint m = 0; m < entry.MeshletCount; m++)
+            {
+                _meshletDraws.Add(new GPUMeshletDraw
+                {
+                    InstanceIndex = instanceIndex,
+                    MeshletIndex = entry.MeshletOffset + m
+                });
+            }
+        }
     }
 
     // ... existing code ...
@@ -568,4 +605,31 @@ public class SceneDataBuilder : ISceneDataBuilder
         size += (ulong)_meshData.Count * GPUMeshData.GetSizeInBytes();
         return size;
     }
+
+        /// <summary>
+        ///     Upload per-frame instance and meshlet-draw lists for GPU-driven rendering.
+        /// </summary>
+    public unsafe void UploadInstanceAndDrawData(Vk vk, CommandBuffer transferCmd, FrameUploadRing uploadRing,
+        Buffer instanceBuffer, Buffer meshletDrawBuffer)
+    {
+        if (_instanceData.Count == 0 || _meshletDraws.Count == 0)
+            return;
+
+        var instanceArray = _instanceData.ToArray();
+        var drawArray = _meshletDraws.ToArray();
+
+        uploadRing.WriteData<GPUInstanceData>(instanceArray, out var instanceSrc);
+        uploadRing.WriteData<GPUMeshletDraw>(drawArray, out var drawSrc);
+
+        var src = uploadRing.CurrentUploadBuffer;
+
+        var instanceSize = (ulong)instanceArray.Length * GPUInstanceData.GetSizeInBytes();
+        var instanceCopy = new BufferCopy { SrcOffset = instanceSrc, DstOffset = 0, Size = instanceSize };
+        vk.CmdCopyBuffer(transferCmd, src, instanceBuffer, 1, &instanceCopy);
+
+        var drawSize = (ulong)drawArray.Length * GPUMeshletDraw.GetSizeInBytes();
+        var drawCopy = new BufferCopy { SrcOffset = drawSrc, DstOffset = 0, Size = drawSize };
+        vk.CmdCopyBuffer(transferCmd, src, meshletDrawBuffer, 1, &drawCopy);
+    }
+    
 }

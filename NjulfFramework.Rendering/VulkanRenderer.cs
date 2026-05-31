@@ -71,6 +71,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     private uint _meshletBufferBindlessIndex = 5;
     private uint _meshletVertexIndexBufferBindlessIndex = 6;
     private uint _meshletTriangleIndexBufferBindlessIndex = 7;
+    private uint _instanceBufferBindlessIndex = 8;
+    private uint _meshletDrawBufferBindlessIndex = 9;
     private MeshManager? _meshManager;
     private MeshPipeline? _meshPipeline;
 
@@ -79,6 +81,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     private Buffer _sceneMeshBuffer;
 
     private Buffer _sceneObjectBuffer;
+    private Buffer _instanceBuffer;
+    private Buffer _meshletDrawBuffer;
     private Sampler _defaultSampler;
 
     private SurfaceKHR _surface;
@@ -328,6 +332,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             _bindlessHeap.UpdateBuffer(0, _sceneObjectBuffer, 16 * 1024 * 1024); // Object buffer at index 0
             _bindlessHeap.UpdateBuffer(1, _sceneMaterialBuffer, 4 * 1024 * 1024); // Material buffer at index 1
             _bindlessHeap.UpdateBuffer(2, _sceneMeshBuffer, 8 * 1024 * 1024); // Mesh buffer at index 2
+            _bindlessHeap.UpdateBuffer(_instanceBufferBindlessIndex, _instanceBuffer, 16 * 1024 * 1024);
+            _bindlessHeap.UpdateBuffer(_meshletDrawBufferBindlessIndex, _meshletDrawBuffer, 32 * 1024 * 1024);
             Console.WriteLine("✓ Scene buffers registered in bindless heap");
 
             _meshPipeline = new MeshPipeline(
@@ -577,6 +583,17 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         _sceneMeshBuffer = _bufferManager.GetBuffer(meshHandle);
 
         // TODO: Register these in BindlessDescriptorHeap later (Phase 1.3)
+        
+        const ulong instanceBufferSize = 16 * 1024 * 1024;   // 16 MB instances
+        const ulong meshletDrawBufferSize = 32 * 1024 * 1024; // 32 MB (instance,meshlet) pairs
+
+        var instanceHandle = _bufferManager.AllocateBuffer(
+            instanceBufferSize, storageUsage, MemoryUsage.AutoPreferDevice);
+        var meshletDrawHandle = _bufferManager.AllocateBuffer(
+            meshletDrawBufferSize, storageUsage, MemoryUsage.AutoPreferDevice);
+
+        _instanceBuffer = _bufferManager.GetBuffer(instanceHandle);
+        _meshletDrawBuffer = _bufferManager.GetBuffer(meshletDrawHandle);
     }
 
 
@@ -678,6 +695,13 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             _sceneObjectBuffer,
             _sceneMaterialBuffer,
             _sceneMeshBuffer);
+        
+        _sceneBuilder.UploadInstanceAndDrawData(
+            _vulkanContext.VulkanApi,
+            transferCommandBuffer,
+            _frameUploadRing,
+            _instanceBuffer,
+            _meshletDrawBuffer);
 
             // Phase 3.5: Upload lights
             _lightManagerImpl?.UploadToGPU(transferCommandBuffer, _frameUploadRing);
@@ -723,7 +747,10 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             LightCount = LightManager?.LightCount ?? 0,
             LightBufferIndex = LightManager?.LightBufferBindlessIndex ?? 0,
             TiledLightHeaderBufferIndex = _tiledLightCullingPass?.TiledLightHeaderBufferIndex ?? 0,
-            TiledLightIndicesBufferIndex = _tiledLightCullingPass?.TiledLightIndicesBufferIndex ?? 0
+            TiledLightIndicesBufferIndex = _tiledLightCullingPass?.TiledLightIndicesBufferIndex ?? 0,
+            InstanceBufferIndex = _instanceBufferBindlessIndex,
+            MeshletDrawBufferIndex = _meshletDrawBufferBindlessIndex,
+            MeshletDrawCount = _sceneBuilder.MeshletDrawCount
         };
 
         if (_depthImage.Handle != 0 && _depthImageLayout != ImageLayout.DepthAttachmentOptimal)
@@ -874,25 +901,25 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         _bindlessHeap.UpdateBuffer(_meshletVertexIndexBufferBindlessIndex, meshletVertexIndicesBuffer, meshletVertexIndexSize);
         _bindlessHeap.UpdateBuffer(_meshletTriangleIndexBufferBindlessIndex, meshletTriangleIndicesBuffer, meshletTriangleIndexSize);
         
-        var cmd = _commandBufferManager.BeginSingleTimeCommands();
-
-        var barrier = new MemoryBarrier
-        {
-            SType = StructureType.MemoryBarrier,
-            SrcAccessMask = AccessFlags.HostWriteBit,  // Descriptor updates are transfer writes
-            DstAccessMask = AccessFlags.ShaderReadBit       // Shaders will read the descriptors
-        };
-
-        _vulkanContext.VulkanApi.CmdPipelineBarrier(
-            cmd,
-            PipelineStageFlags.HostBit,  // Source: host (CPU) updates
-            PipelineStageFlags.MeshShaderBitExt | PipelineStageFlags.TaskShaderBitExt,  // Destination: mesh/task shaders
-            0,
-            1, &barrier,
-            0, null,
-            0, null);
-
-        _commandBufferManager.EndSingleTimeCommands(cmd);
+        // var cmd = _commandBufferManager.BeginSingleTimeCommands();
+        //
+        // var barrier = new MemoryBarrier
+        // {
+        //     SType = StructureType.MemoryBarrier,
+        //     SrcAccessMask = AccessFlags.HostWriteBit,  // Descriptor updates are transfer writes
+        //     DstAccessMask = AccessFlags.ShaderReadBit       // Shaders will read the descriptors
+        // };
+        //
+        // _vulkanContext.VulkanApi.CmdPipelineBarrier(
+        //     cmd,
+        //     PipelineStageFlags.HostBit,  // Source: host (CPU) updates
+        //     PipelineStageFlags.MeshShaderBitExt | PipelineStageFlags.TaskShaderBitExt,  // Destination: mesh/task shaders
+        //     0,
+        //     1, &barrier,
+        //     0, null,
+        //     0, null);
+        //
+        // _commandBufferManager.EndSingleTimeCommands(cmd);
         
         
         Console.WriteLine("✓ Mesh buffers registered in bindless heap at indices 3-7");

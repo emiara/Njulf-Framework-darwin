@@ -372,12 +372,17 @@ public class MeshBuffer : IDisposable
         _meshletVertexIndices.Clear();
         _meshletTriangleIndices.Clear();
 
-        foreach (var kvp in _meshes)
+        // Iterate in a deterministic order (by vertex offset) so the baked
+        // baseVertex always matches the consolidated buffer layout.
+        foreach (var kvp in _meshes.OrderBy(k => k.Value.VertexOffset))
         {
             var mesh = kvp.Key;
             var entry = kvp.Value;
             var indices = mesh.Indices;
             var vertices = mesh.Vertices;
+
+            // This mesh's base offset into the consolidated vertex buffer.
+            var meshBaseVertex = entry.VertexOffset;
 
             var meshletOffset = (uint)_meshlets.Count;
             var meshletCount = 0u;
@@ -464,6 +469,10 @@ public class MeshBuffer : IDisposable
                     VertexCount = (uint)localVerts.Count,
                     TriangleOffset = triangleOffset,
                     TriangleCount = (uint)(localTris.Count / 3),
+                    BaseVertex = meshBaseVertex,
+                    Pad0 = 0,
+                    Pad1 = 0,
+                    Pad2 = 0,
                     BoundsMin = new Vector4(boundsMin, 0),
                     BoundsMax = new Vector4(boundsMax, 0),
                     ConeAxis = new Vector4(coneAxis, 0),
@@ -566,8 +575,12 @@ public class MeshBuffer : IDisposable
     {
         public uint VertexOffset;
         public uint VertexCount;
-        public uint TriangleOffset;
+        public uint TriangleOffset;   // ABSOLUTE offset into consolidated meshletTriangleIndices buffer
         public uint TriangleCount;
+        public uint BaseVertex;       // ABSOLUTE base offset into the consolidated VERTEX buffer for this mesh
+        public uint Pad0;
+        public uint Pad1;
+        public uint Pad2;
         public Vector4 BoundsMin;
         public Vector4 BoundsMax;
         public Vector4 ConeAxis;

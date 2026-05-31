@@ -126,4 +126,8 @@ public class RenderGraphContext(uint width, uint height, BindlessDescriptorHeap 
     ///     Bindless buffer index for tiled light indices.
     /// </summary>
     public uint TiledLightIndicesBufferIndex { get; set; }
+    
+    public uint InstanceBufferIndex { get; init; }
+    public uint MeshletDrawBufferIndex { get; init; }
+    public uint MeshletDrawCount { get; init; }
 }

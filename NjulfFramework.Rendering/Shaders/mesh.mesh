@@ -8,43 +8,12 @@ layout(local_size_x = 128) in;
 layout(max_vertices = 128, max_primitives = 64) out;
 layout(triangles) out;
 
-struct GPUMeshlet
-{
-    uint vertexOffset;
-    uint vertexCount;
-    uint triangleOffset;
-    uint triangleCount;
-    vec4 boundsMin;
-    vec4 boundsMax;
-    vec4 coneAxis;
-    vec4 coneData;
-};
+layout(set = 0, binding = 0) readonly buffer BufferHeap { uint data[]; } buffers[65536];
 
-// Bindless buffer heap (set 0, binding 0)
-// Index 3: Vertex buffer
-// Index 4: Index buffer
-// Index 5: Meshlet buffer
-// Index 6: Meshlet vertex index buffer
-// Index 7: Meshlet triangle index buffer
-layout(set = 0, binding = 0) readonly buffer BufferHeap
-{
-    uint data[];
-} buffers[65536];
-
-// Push constants
 layout(push_constant) uniform PushConstants
 {
-    mat4 model;
     mat4 view;
     mat4 projection;
-    uint materialIndex;
-    uint vertexOffset;
-    uint indexOffset;
-    uint indexCount;
-    uint vertexCount;
-    uint meshletOffset;
-    uint meshletCount;
-    float meshBoundsRadius;
     uint screenWidth;
     uint screenHeight;
     uint debugMeshlets;
@@ -52,8 +21,15 @@ layout(push_constant) uniform PushConstants
     uint lightBufferIndex;
     uint tiledLightHeaderBufferIndex;
     uint tiledLightIndicesBufferIndex;
-    uint padding;
+    uint instanceBufferIndex;
+    uint meshletDrawBufferIndex;
+    uint meshletDrawCount;
+    uint pad0;
+    uint pad1;
 } pc;
+
+struct Payload { uint instanceIndex; uint meshletIndex; };
+taskPayloadSharedEXT Payload payload;
 
 layout(location = 0) out vec3 outPosition[];
 layout(location = 1) out vec3 outNormal[];
@@ -61,135 +37,77 @@ layout(location = 2) out vec2 outTexCoord[];
 layout(location = 3) out flat uint outMaterialIndex[];
 layout(location = 4) out flat uint outMeshletIndex[];
 
-// GPUMeshlet is 80 bytes = 20 uints
-// Field offsets in uints:
-//   vertexOffset:       0
-//   vertexCount:        1
-//   triangleOffset:     2
-//   triangleCount:      3
-//   boundsMin:          4-7 (vec4 = 4 uints)
-//   boundsMax:          8-11 (vec4)
-//   coneAxis:           12-15 (vec4)
-//   coneData:           16-19 (vec4)
+const uint MESHLET_STRIDE = 24u; // 96 bytes
+const uint INSTANCE_STRIDE = 20u; // 80 bytes
 
-uint getMeshletVertexOffset(uint meshletIndex)
-{
-    return buffers[5u].data[meshletIndex * 20u + 0u];
+uint meshletField(uint meshletIndex, uint field) {
+    return buffers[5u].data[meshletIndex * MESHLET_STRIDE + field];
 }
 
-uint getMeshletVertexCount(uint meshletIndex)
-{
-    return buffers[5u].data[meshletIndex * 20u + 1u];
+mat4 getInstanceModel(uint instanceIndex) {
+    uint base = instanceIndex * INSTANCE_STRIDE;
+    mat4 m;
+    for (int i = 0; i < 16; i++)
+        m[i / 4][i % 4] = uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + uint(i)]);
+    return m;
 }
 
-uint getMeshletTriangleOffset(uint meshletIndex)
-{
-    return buffers[5u].data[meshletIndex * 20u + 2u];
+uint getInstanceMaterial(uint instanceIndex) {
+    return buffers[pc.instanceBufferIndex].data[instanceIndex * INSTANCE_STRIDE + 16u];
 }
 
-uint getMeshletTriangleCount(uint meshletIndex)
-{
-    return buffers[5u].data[meshletIndex * 20u + 3u];
-}
-
-// Vertex is 32 bytes = 8 uints (each float = 1 uint in bit representation)
-// Layout: Position(x,y,z), Normal(x,y,z), TexCoord(x,y)
-//   uint[0-2]:  position.x, position.y, position.z (as float bits)
-//   uint[3-5]:  normal.x, normal.y, normal.z (as float bits)
-//   uint[6-7]:  texCoord.x, texCoord.y (as float bits)
-//void unpackVertex(uint vertexIndex, out vec3 position, out vec3 normal, out vec2 texCoord)
-//{
-//    uint base = vertexIndex * 8u;
-//    position = vec3(
-//        uintBitsToFloat(buffers[3u].data[base + 0u]),
-//        uintBitsToFloat(buffers[3u].data[base + 1u]),
-//        uintBitsToFloat(buffers[3u].data[base + 2u])
-//    );
-//    normal = vec3(
-//        uintBitsToFloat(buffers[3u].data[base + 3u]),
-//        uintBitsToFloat(buffers[3u].data[base + 4u]),
-//        uintBitsToFloat(buffers[3u].data[base + 5u])
-//    );
-//    texCoord = vec2(
-//        uintBitsToFloat(buffers[3u].data[base + 6u]),
-//        uintBitsToFloat(buffers[3u].data[base + 7u])
-//    );
-//}
-
-// Vertex is 40 bytes = 10 uints (with padding)
 void unpackVertex(uint vertexIndex, out vec3 position, out vec3 normal, out vec2 texCoord)
 {
-    uint base = vertexIndex * 8u;
-
-    // Position (offset 0, 4, 8 in bytes = uints 0, 1, 2)
+    uint base = vertexIndex * 8u; // 32-byte vertex
     position = vec3(
         uintBitsToFloat(buffers[3u].data[base + 0u]),
         uintBitsToFloat(buffers[3u].data[base + 1u]),
-        uintBitsToFloat(buffers[3u].data[base + 2u])
-    );
-
-    // Skip padding (uint 3 is padding)
-    // Normal (offset 16, 20, 24 in bytes = uints 4, 5, 6)
+        uintBitsToFloat(buffers[3u].data[base + 2u]));
     normal = vec3(
+        uintBitsToFloat(buffers[3u].data[base + 3u]),
         uintBitsToFloat(buffers[3u].data[base + 4u]),
-        uintBitsToFloat(buffers[3u].data[base + 5u]),
-        uintBitsToFloat(buffers[3u].data[base + 6u])
-    );
-
-    // Skip padding (uint 7 is padding)
-    // TexCoord (offset 28, 32 in bytes = uints 8, 9)
+        uintBitsToFloat(buffers[3u].data[base + 5u]));
     texCoord = vec2(
-        uintBitsToFloat(buffers[3u].data[base + 8u]),
-        uintBitsToFloat(buffers[3u].data[base + 9u])
-    );
+        uintBitsToFloat(buffers[3u].data[base + 6u]),
+        1.0 - uintBitsToFloat(buffers[3u].data[base + 7u]));
 }
 
 void main()
 {
-    if (gl_WorkGroupID.x >= pc.meshletCount)
-    {
-        if (gl_LocalInvocationIndex == 0u)
-        {
-            SetMeshOutputsEXT(0, 0);
-        }
-        return;
-    }
+    uint instanceIndex = payload.instanceIndex;
+    uint meshletIndex  = payload.meshletIndex;
 
-    uint meshletIndex = pc.meshletOffset + gl_WorkGroupID.x;
-    uint vertexOffset = getMeshletVertexOffset(meshletIndex);
-    uint vertexCount = getMeshletVertexCount(meshletIndex);
-    uint triangleOffset = getMeshletTriangleOffset(meshletIndex);
-    uint triangleCount = getMeshletTriangleCount(meshletIndex);
+    uint vertexOffset   = meshletField(meshletIndex, 0u);
+    uint vertexCount    = meshletField(meshletIndex, 1u);
+    uint triangleOffset = meshletField(meshletIndex, 2u);
+    uint triangleCount  = meshletField(meshletIndex, 3u);
+    uint baseVertex     = meshletField(meshletIndex, 4u); // baked absolute base into consolidated vertex buffer
 
-    bool culled = false;
     if (gl_LocalInvocationIndex == 0u)
-    {
-        if (culled)
-            SetMeshOutputsEXT(0, 0);
-        else
-            SetMeshOutputsEXT(vertexCount, triangleCount);
-    }
-
-    if (culled)
-        return;
+        SetMeshOutputsEXT(vertexCount, triangleCount);
 
     if (triangleCount == 0u)
         return;
 
+    mat4 model = getInstanceModel(instanceIndex);
+    uint materialIndex = getInstanceMaterial(instanceIndex);
+    mat4 mvp = pc.projection * pc.view * model;
+
     uint localIndex = gl_LocalInvocationIndex;
     if (localIndex < vertexCount)
     {
-        uint meshletVertexIndex = buffers[6u].data[vertexOffset + localIndex];
-        uint globalVertexIndex = meshletVertexIndex + pc.vertexOffset;
-        vec3 pos;
-        vec3 normal;
-        vec2 uv;
+        // meshlet vertex index is mesh-LOCAL; add the meshlet's baked baseVertex.
+        uint meshLocalVertex = buffers[6u].data[vertexOffset + localIndex];
+        uint globalVertexIndex = baseVertex + meshLocalVertex;
+
+        vec3 pos; vec3 normal; vec2 uv;
         unpackVertex(globalVertexIndex, pos, normal, uv);
-        gl_MeshVerticesEXT[localIndex].gl_Position = pc.projection * pc.view * pc.model * vec4(pos, 1.0);
-        outPosition[localIndex] = vec3(pc.model * vec4(pos, 1.0));
-        outNormal[localIndex] = normalize(mat3(pc.model) * normal);
+
+        gl_MeshVerticesEXT[localIndex].gl_Position = mvp * vec4(pos, 1.0);
+        outPosition[localIndex] = vec3(model * vec4(pos, 1.0));
+        outNormal[localIndex] = normalize(mat3(model) * normal);
         outTexCoord[localIndex] = uv;
-        outMaterialIndex[localIndex] = pc.materialIndex;
+        outMaterialIndex[localIndex] = materialIndex;
         outMeshletIndex[localIndex] = meshletIndex;
     }
 

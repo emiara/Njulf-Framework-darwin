@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Runtime.InteropServices;
 using NjulfFramework.Core.Enums;
 using NjulfFramework.Core.Math;
 

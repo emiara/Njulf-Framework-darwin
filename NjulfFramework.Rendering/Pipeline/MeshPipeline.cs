@@ -17,7 +17,7 @@ public class MeshPipeline : IDisposable
         Vk vk,
         Device device,
         DescriptorSetLayout[] descriptorSetLayouts,
-        Format colorFormat = Format.B8G8R8A8Unorm,
+        Format colorFormat = Format.B8G8R8A8Srgb,
         Format depthFormat = Format.D32Sfloat,
         string meshShaderPath = "Shaders/mesh.mesh",
         string fragShaderPath = "Shaders/forward_plus.frag",

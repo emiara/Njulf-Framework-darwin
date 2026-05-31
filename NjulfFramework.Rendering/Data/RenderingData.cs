@@ -267,35 +267,24 @@ public class RenderingData
     [StructLayout(LayoutKind.Sequential)]
     public struct PushConstants
     {
-        public Matrix4x4 Model; // 64 bytes
-        public Matrix4x4 View; // 64 bytes
-        public Matrix4x4 Projection; // 64 bytes
+        public Matrix4x4 View;        // 64 bytes
+        public Matrix4x4 Projection;  // 64 bytes
 
-        public uint MaterialIndex; // 4 bytes
-        public uint VertexOffset; // 4 bytes
+        public uint ScreenWidth;
+        public uint ScreenHeight;
+        public uint DebugMeshlets;
+        public uint LightCount;
 
-        public uint IndexOffset; // 4 bytes
-        public uint IndexCount; // 4 bytes
-        public uint VertexCount; // 4 bytes
-        public uint MeshletOffset; // 4 bytes
+        public uint LightBufferIndex;
+        public uint TiledLightHeaderBufferIndex;
+        public uint TiledLightIndicesBufferIndex;
+        public uint InstanceBufferIndex;
 
-        public uint MeshletCount; // 4 bytes
-        public float MeshBoundsRadius; // 4 bytes
-        public uint ScreenWidth; // 4 bytes
-        public uint ScreenHeight; // 4 bytes
-        public uint DebugMeshlets; // 4 bytes
-        public uint LightCount; // 4 bytes
-        public uint LightBufferIndex; // 4 bytes
-        public uint TiledLightHeaderBufferIndex; // 4 bytes
-        public uint TiledLightIndicesBufferIndex; // 4 bytes
-        public uint Padding; // 4 bytes (total: 192 + 15*4 + 4 = 256 bytes)
+        public uint MeshletDrawBufferIndex;
+        public uint MeshletDrawCount;
+        public uint Pad0;
+        public uint Pad1;
 
-        /// <summary>
-        /// Returns the size of the PushConstants struct in bytes.
-        /// Industry standard: Use Marshal.SizeOf to avoid hardcoding and ensure
-        /// the size always matches the actual struct layout.
-        /// Must be <= 256 bytes for most Vulkan devices.
-        /// </summary>
         public static uint SizeInBytes => (uint)Marshal.SizeOf<PushConstants>();
     }
 }

@@ -35,17 +35,8 @@ layout(set = 1, binding = 0) uniform sampler2D textures[65536];
 
 layout(push_constant) uniform PushConstants
 {
-    mat4 model;
     mat4 view;
     mat4 projection;
-    uint materialIndex;
-    uint vertexOffset;
-    uint indexOffset;
-    uint indexCount;
-    uint vertexCount;
-    uint meshletOffset;
-    uint meshletCount;
-    float meshBoundsRadius;
     uint screenWidth;
     uint screenHeight;
     uint debugMeshlets;
@@ -53,7 +44,11 @@ layout(push_constant) uniform PushConstants
     uint lightBufferIndex;
     uint tiledLightHeaderBufferIndex;
     uint tiledLightIndicesBufferIndex;
-    uint padding;
+    uint instanceBufferIndex;
+    uint meshletDrawBufferIndex;
+    uint meshletDrawCount;
+    uint pad0;
+    uint pad1;
 } pc;
 
 // ============================================================================

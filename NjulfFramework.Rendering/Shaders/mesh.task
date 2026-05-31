@@ -5,19 +5,12 @@
 
 layout(local_size_x = 1) in;
 
+layout(set = 0, binding = 0) readonly buffer BufferHeap { uint data[]; } buffers[65536];
+
 layout(push_constant) uniform PushConstants
 {
-    mat4 model;
     mat4 view;
     mat4 projection;
-    uint materialIndex;
-    uint vertexOffset;
-    uint indexOffset;
-    uint indexCount;
-    uint vertexCount;
-    uint meshletOffset;
-    uint meshletCount;
-    float meshBoundsRadius;
     uint screenWidth;
     uint screenHeight;
     uint debugMeshlets;
@@ -25,15 +18,97 @@ layout(push_constant) uniform PushConstants
     uint lightBufferIndex;
     uint tiledLightHeaderBufferIndex;
     uint tiledLightIndicesBufferIndex;
-    uint padding;
+    uint instanceBufferIndex;
+    uint meshletDrawBufferIndex;
+    uint meshletDrawCount;
+    uint pad0;
+    uint pad1;
 } pc;
+
+// Payload passed to the mesh shader so it knows which draw it is processing.
+struct Payload { uint instanceIndex; uint meshletIndex; };
+taskPayloadSharedEXT Payload payload;
+
+// GPUMeshlet is now 96 bytes = 24 uints (added BaseVertex + 3 pad uints before the vec4s).
+//   0: vertexOffset, 1: vertexCount, 2: triangleOffset, 3: triangleCount,
+//   4: baseVertex,   5-7: pad,
+//   8-11: boundsMin, 12-15: boundsMax, 16-19: coneAxis, 20-23: coneData
+const uint MESHLET_STRIDE = 24u;
+
+vec4 readVec4(uint baseUint) {
+    return vec4(
+        uintBitsToFloat(buffers[5u].data[baseUint + 0u]),
+        uintBitsToFloat(buffers[5u].data[baseUint + 1u]),
+        uintBitsToFloat(buffers[5u].data[baseUint + 2u]),
+        uintBitsToFloat(buffers[5u].data[baseUint + 3u]));
+}
+
+// Instance is 80 bytes = 20 uints: model(0-15), materialIndex(16), meshletBaseOffset(17), meshletCount(18), pad(19)
+mat4 getInstanceModel(uint instanceIndex) {
+    uint base = instanceIndex * 20u;
+    return mat4(
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 0u]),
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 1u]),
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 2u]),
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 3u]),
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 4u]),
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 5u]),
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 6u]),
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 7u]),
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 8u]),
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 9u]),
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 10u]),
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 11u]),
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 12u]),
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 13u]),
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 14u]),
+        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 15u]));
+}
 
 void main()
 {
-    if (gl_LocalInvocationIndex == 0)
-    {
-        // Emit exactly one mesh workgroup per meshlet. No LOD reduction for now,
-        // so gl_WorkGroupID.x in the mesh shader maps 1:1 to a meshlet.
-        EmitMeshTasksEXT(pc.meshletCount, 1, 1);
+    uint drawId = gl_GlobalInvocationID.x;
+    if (drawId >= pc.meshletDrawCount) {
+        EmitMeshTasksEXT(0, 1, 1);
+        return;
     }
+
+    // Meshlet draw entry: 2 uints (instanceIndex, meshletIndex)
+    uint instanceIndex = buffers[pc.meshletDrawBufferIndex].data[drawId * 2u + 0u];
+    uint meshletIndex  = buffers[pc.meshletDrawBufferIndex].data[drawId * 2u + 1u];
+
+    // --- Cone backface culling in world space ---
+    uint mBase = meshletIndex * MESHLET_STRIDE;
+    vec4 coneAxis = readVec4(mBase + 16u);
+    vec4 coneData = readVec4(mBase + 20u); // x = cutoff
+    vec4 boundsMin = readVec4(mBase + 8u);
+    vec4 boundsMax = readVec4(mBase + 12u);
+
+    mat4 model = getInstanceModel(instanceIndex);
+    vec3 centerLocal = (boundsMin.xyz + boundsMax.xyz) * 0.5;
+    vec3 centerWorld = (model * vec4(centerLocal, 1.0)).xyz;
+
+    // Camera world position from inverse view (translation column of view^-1)
+    mat4 invView = inverse(pc.view);
+    vec3 camPos = invView[3].xyz;
+
+    vec3 axisWorld = normalize(mat3(model) * coneAxis.xyz);
+    vec3 viewDir = normalize(centerWorld - camPos);
+
+    bool culled = false;
+    if (coneData.x > -1.0) {
+        // If the meshlet's normal cone faces fully away from the camera, cull it.
+        if (dot(viewDir, axisWorld) >= coneData.x) {
+            culled = true;
+        }
+    }
+
+    if (culled) {
+        EmitMeshTasksEXT(0, 1, 1);
+        return;
+    }
+
+    payload.instanceIndex = instanceIndex;
+    payload.meshletIndex  = meshletIndex;
+    EmitMeshTasksEXT(1, 1, 1);
 }
