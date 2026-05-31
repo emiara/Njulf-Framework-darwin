@@ -199,7 +199,7 @@ public class MeshBuffer : IDisposable
                 MemoryUsage.AutoPreferDevice);
 
             _vertexBuffer = _bufferManager.GetBuffer(VertexBufferHandle);
-            Console.WriteLine($"✓ Vertex buffer allocated: {vertexSize / (1024 * 1024)} MB");
+            Console.WriteLine($"✓ Vertex buffer allocated: {vertexSize / (1024.0 * 1024.0):F2} MB");
         }
 
         // Allocate index buffer
@@ -215,7 +215,7 @@ public class MeshBuffer : IDisposable
                 MemoryUsage.AutoPreferDevice);
 
             _indexBuffer = _bufferManager.GetBuffer(IndexBufferHandle);
-            Console.WriteLine($"✓ Index buffer allocated: {indexSize / (1024 * 1024)} MB");
+            Console.WriteLine($"✓ Index buffer allocated: {indexSize / (1024.0 * 1024.0):F2} MB");
         }
 
         if (_meshlets.Count > 0)

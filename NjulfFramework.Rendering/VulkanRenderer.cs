@@ -874,6 +874,27 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         _bindlessHeap.UpdateBuffer(_meshletVertexIndexBufferBindlessIndex, meshletVertexIndicesBuffer, meshletVertexIndexSize);
         _bindlessHeap.UpdateBuffer(_meshletTriangleIndexBufferBindlessIndex, meshletTriangleIndicesBuffer, meshletTriangleIndexSize);
         
+        var cmd = _commandBufferManager.BeginSingleTimeCommands();
+
+        var barrier = new MemoryBarrier
+        {
+            SType = StructureType.MemoryBarrier,
+            SrcAccessMask = AccessFlags.HostWriteBit,  // Descriptor updates are transfer writes
+            DstAccessMask = AccessFlags.ShaderReadBit       // Shaders will read the descriptors
+        };
+
+        _vulkanContext.VulkanApi.CmdPipelineBarrier(
+            cmd,
+            PipelineStageFlags.HostBit,  // Source: host (CPU) updates
+            PipelineStageFlags.MeshShaderBitExt | PipelineStageFlags.TaskShaderBitExt,  // Destination: mesh/task shaders
+            0,
+            1, &barrier,
+            0, null,
+            0, null);
+
+        _commandBufferManager.EndSingleTimeCommands(cmd);
+        
+        
         Console.WriteLine("✓ Mesh buffers registered in bindless heap at indices 3-7");
     }
 

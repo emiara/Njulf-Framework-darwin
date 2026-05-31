@@ -189,7 +189,10 @@ public unsafe class VulkanContext : IDisposable
         var queueCreateInfos = new List<DeviceQueueCreateInfo>();
         var uniqueQueueFamilies = new HashSet<uint> { GraphicsQueueFamily, TransferQueueFamily };
 
-        var features13 = new PhysicalDeviceVulkan13Features();
+        var features13 = new PhysicalDeviceVulkan13Features
+        {
+            SType = StructureType.PhysicalDeviceVulkan13Features
+        };
         var features2 = new PhysicalDeviceFeatures2
         {
             SType = StructureType.PhysicalDeviceFeatures2,

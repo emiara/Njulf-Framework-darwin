@@ -97,22 +97,50 @@ uint getMeshletTriangleCount(uint meshletIndex)
 //   uint[0-2]:  position.x, position.y, position.z (as float bits)
 //   uint[3-5]:  normal.x, normal.y, normal.z (as float bits)
 //   uint[6-7]:  texCoord.x, texCoord.y (as float bits)
+//void unpackVertex(uint vertexIndex, out vec3 position, out vec3 normal, out vec2 texCoord)
+//{
+//    uint base = vertexIndex * 8u;
+//    position = vec3(
+//        uintBitsToFloat(buffers[3u].data[base + 0u]),
+//        uintBitsToFloat(buffers[3u].data[base + 1u]),
+//        uintBitsToFloat(buffers[3u].data[base + 2u])
+//    );
+//    normal = vec3(
+//        uintBitsToFloat(buffers[3u].data[base + 3u]),
+//        uintBitsToFloat(buffers[3u].data[base + 4u]),
+//        uintBitsToFloat(buffers[3u].data[base + 5u])
+//    );
+//    texCoord = vec2(
+//        uintBitsToFloat(buffers[3u].data[base + 6u]),
+//        uintBitsToFloat(buffers[3u].data[base + 7u])
+//    );
+//}
+
+// Vertex is 40 bytes = 10 uints (with padding)
 void unpackVertex(uint vertexIndex, out vec3 position, out vec3 normal, out vec2 texCoord)
 {
     uint base = vertexIndex * 8u;
+
+    // Position (offset 0, 4, 8 in bytes = uints 0, 1, 2)
     position = vec3(
         uintBitsToFloat(buffers[3u].data[base + 0u]),
         uintBitsToFloat(buffers[3u].data[base + 1u]),
         uintBitsToFloat(buffers[3u].data[base + 2u])
     );
+
+    // Skip padding (uint 3 is padding)
+    // Normal (offset 16, 20, 24 in bytes = uints 4, 5, 6)
     normal = vec3(
-        uintBitsToFloat(buffers[3u].data[base + 3u]),
         uintBitsToFloat(buffers[3u].data[base + 4u]),
-        uintBitsToFloat(buffers[3u].data[base + 5u])
+        uintBitsToFloat(buffers[3u].data[base + 5u]),
+        uintBitsToFloat(buffers[3u].data[base + 6u])
     );
+
+    // Skip padding (uint 7 is padding)
+    // TexCoord (offset 28, 32 in bytes = uints 8, 9)
     texCoord = vec2(
-        uintBitsToFloat(buffers[3u].data[base + 6u]),
-        uintBitsToFloat(buffers[3u].data[base + 7u])
+        uintBitsToFloat(buffers[3u].data[base + 8u]),
+        uintBitsToFloat(buffers[3u].data[base + 9u])
     );
 }
 

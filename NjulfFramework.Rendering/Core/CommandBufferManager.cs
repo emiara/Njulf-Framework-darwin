@@ -140,4 +140,54 @@ public class CommandBufferManager : IDisposable
     {
         _vk.ResetCommandBuffer(commandBuffer, CommandBufferResetFlags.ReleaseResourcesBit);
     }
+    
+    /// <summary>
+    /// Begins recording a single-time command buffer for immediate submission.
+    /// Use this for operations like pipeline barriers that need to complete before rendering.
+    /// </summary>
+    public unsafe CommandBuffer BeginSingleTimeCommands()
+    {
+        var allocInfo = new CommandBufferAllocateInfo
+        {
+            SType = StructureType.CommandBufferAllocateInfo,
+            CommandPool = _commandPool,  // Uses your existing graphics pool
+            Level = CommandBufferLevel.Primary,
+            CommandBufferCount = 1
+        };
+
+        if (_vk.AllocateCommandBuffers(_device, &allocInfo, out var cmd) != Result.Success)
+            throw new Exception("Failed to allocate single-time command buffer");
+
+        var beginInfo = new CommandBufferBeginInfo
+        {
+            SType = StructureType.CommandBufferBeginInfo,
+            Flags = CommandBufferUsageFlags.OneTimeSubmitBit
+        };
+
+        _vk.BeginCommandBuffer(cmd, &beginInfo);
+        return cmd;
+    }
+
+    /// <summary>
+    /// Ends recording, submits, and frees a single-time command buffer.
+    /// Blocks until completion, ensuring synchronization.
+    /// </summary>
+    public unsafe void EndSingleTimeCommands(CommandBuffer cmd)
+    {
+        _vk.EndCommandBuffer(cmd);
+
+        var submitInfo = new SubmitInfo
+        {
+            SType = StructureType.SubmitInfo,
+            CommandBufferCount = 1,
+            PCommandBuffers = &cmd
+        };
+
+        // Submit to graphics queue and wait for completion
+        _vk.QueueSubmit(_vulkanContext.GraphicsQueue, 1, &submitInfo, default);
+        _vk.QueueWaitIdle(_vulkanContext.GraphicsQueue);
+
+        // Free the temporary command buffer
+        _vk.FreeCommandBuffers(_device, _commandPool, 1, &cmd);
+    }
 }
