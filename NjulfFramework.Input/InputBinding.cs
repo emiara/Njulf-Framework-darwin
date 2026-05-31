@@ -13,12 +13,17 @@ public class InputBinding
     public InputDeviceType Device { get; set; }
 
     /// <summary>
+    ///     The type of binding (key, mouse button, mouse axis).
+    /// </summary>
+    public InputBindingType BindingType { get; set; }
+
+    /// <summary>
     ///     The key code for keyboard bindings.
     /// </summary>
     public int KeyCode { get; set; }
 
     /// <summary>
-    ///     The button code for mouse bindings.
+    ///     The button code for mouse button bindings.
     /// </summary>
     public int Button { get; set; }
 
@@ -35,20 +40,48 @@ public class InputBinding
         return new InputBinding
         {
             Device = InputDeviceType.Keyboard,
+            BindingType = InputBindingType.Key,
             KeyCode = keyCode,
             Scale = scale
         };
     }
 
     /// <summary>
-    ///     Creates a mouse binding.
+    ///     Creates a mouse button binding.
     /// </summary>
     public static InputBinding ForMouse(int button, float scale = 1.0f)
     {
         return new InputBinding
         {
             Device = InputDeviceType.Mouse,
+            BindingType = InputBindingType.MouseButton,
             Button = button,
+            Scale = scale
+        };
+    }
+
+    /// <summary>
+    ///     Creates a mouse X axis delta binding.
+    /// </summary>
+    public static InputBinding ForMouseXAxis(float scale = 1.0f)
+    {
+        return new InputBinding
+        {
+            Device = InputDeviceType.Mouse,
+            BindingType = InputBindingType.MouseXAxis,
+            Scale = scale
+        };
+    }
+
+    /// <summary>
+    ///     Creates a mouse Y axis delta binding.
+    /// </summary>
+    public static InputBinding ForMouseYAxis(float scale = 1.0f)
+    {
+        return new InputBinding
+        {
+            Device = InputDeviceType.Mouse,
+            BindingType = InputBindingType.MouseYAxis,
             Scale = scale
         };
     }

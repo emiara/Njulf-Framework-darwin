@@ -28,6 +28,16 @@ namespace NjulfFramework.Input.Interfaces
         float Wheel { get; }
 
         /// <summary>
+        ///     Gets the X delta of the mouse position since last frame.
+        /// </summary>
+        float DeltaX { get; }
+
+        /// <summary>
+        ///     Gets the Y delta of the mouse position since last frame.
+        /// </summary>
+        float DeltaY { get; }
+
+        /// <summary>
         ///     Gets whether a mouse button is currently pressed.
         /// </summary>
         /// <param name="button">The button index</param>

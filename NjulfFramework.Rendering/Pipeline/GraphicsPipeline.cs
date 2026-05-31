@@ -212,11 +212,13 @@ public class GraphicsPipeline : IDisposable
                 fixed (DescriptorSetLayout* layoutsPtr = descriptorSetLayouts)
                 {
                     // Define push constant range for vertex shader
+                    // Industry standard: Use Marshal.SizeOf to calculate size dynamically
+                    // This ensures the size always matches the C# PushConstants struct layout
                     var pushConstantRange = new PushConstantRange
                     {
                         StageFlags = ShaderStageFlags.VertexBit | ShaderStageFlags.FragmentBit,
                         Offset = 0,
-                        Size = (uint)sizeof(Data.RenderingData.PushConstants)
+                        Size = (uint)Marshal.SizeOf<Data.RenderingData.PushConstants>()
                     };
 
                     var pipelineLayoutInfo = new PipelineLayoutCreateInfo

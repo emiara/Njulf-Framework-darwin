@@ -1,5 +1,6 @@
 //SPDX-License-Identifier: MPL-2.0
 
+using NjulfFramework.Core.Interfaces.Rendering;
 using NjulfFramework.Rendering.Resources;
 using NjulfFramework.Rendering.Resources.Descriptors;
 using NjulfFramework.Rendering.Resources.Handles;
@@ -28,7 +29,7 @@ public class TiledLightCullingPass : RenderGraphPass
 
     private readonly ComputePipeline _computePipeline;
     private readonly Device _device;
-    private readonly LightManager _lightManager;
+    private readonly ILightManager _lightManager;
 
     private readonly BufferHandle _tiledLightHeaderBuffer;
     private readonly uint _tiledLightHeaderBufferIndex;
@@ -50,7 +51,7 @@ public class TiledLightCullingPass : RenderGraphPass
         string name,
         Vk vk,
         Device device,
-        LightManager lightManager,
+        ILightManager lightManager,
         BufferManager bufferManager,
         DescriptorSetLayouts descriptorLayouts,
         BindlessDescriptorHeap bindlessHeap,
@@ -72,9 +73,11 @@ public class TiledLightCullingPass : RenderGraphPass
             MemoryUsage.AutoPreferDevice);
         _tiledLightHeaderBufferVk = bufferManager.GetBuffer(_tiledLightHeaderBuffer);
 
-        // Register with bindless heap
-        if (!bindlessHeap.TryAllocateBufferIndex(out _tiledLightHeaderBufferIndex))
-            throw new Exception("Failed to allocate bindless index for tiled light header buffer");
+        // Register with bindless heap at fixed indices (after scene buffers 0,1,2 and light buffer 3)
+        // Scene buffers: 0=object, 1=material, 2=mesh, 3=light
+        // Tiled light buffers: 4=header, 5=indices
+        _tiledLightHeaderBufferIndex = 4;
+        _tiledLightIndicesBufferIndex = 5;
         bindlessHeap.UpdateBuffer(_tiledLightHeaderBufferIndex, _tiledLightHeaderBufferVk, MaxTiles * 8);
 
         // Step 3: Allocate tiled light indices buffer (all light indices for all tiles)
@@ -84,9 +87,7 @@ public class TiledLightCullingPass : RenderGraphPass
             MemoryUsage.AutoPreferDevice);
         _tiledLightIndicesBufferVk = bufferManager.GetBuffer(_tiledLightIndicesBuffer);
 
-        // Register with bindless heap
-        if (!bindlessHeap.TryAllocateBufferIndex(out _tiledLightIndicesBufferIndex))
-            throw new Exception("Failed to allocate bindless index for tiled light indices buffer");
+        // Register with bindless heap at fixed index 5
         bindlessHeap.UpdateBuffer(_tiledLightIndicesBufferIndex, _tiledLightIndicesBufferVk,
             MaxTiles * MaxLightsPerTile * 4);
 

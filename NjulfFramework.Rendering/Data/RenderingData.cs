@@ -289,5 +289,12 @@ public class RenderingData
         public uint TiledLightHeaderBufferIndex; // 4 bytes
         public uint TiledLightIndicesBufferIndex; // 4 bytes
         public uint Padding; // 4 bytes (align to 16)
+
+        /// <summary>
+        /// Returns the size of the PushConstants struct in bytes.
+        /// Industry standard: Use Marshal.SizeOf to avoid hardcoding and ensure
+        /// the size always matches the actual struct layout.
+        /// </summary>
+        public static uint SizeInBytes => (uint)Marshal.SizeOf<PushConstants>();
     }
 }

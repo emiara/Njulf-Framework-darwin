@@ -5,14 +5,13 @@ layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inNormal;
 layout(location = 2) in vec2 inTexCoord;
 
-// Push constants (must match C# struct)
+// Push constants (must match C# PushConstants struct exactly)
+// Industry standard: Struct layout must match between C# and GLSL byte-for-byte
 layout(push_constant) uniform PushConstants {
     mat4 model;
     mat4 view;
     mat4 projection;
     uint materialIndex;
-    uint meshIndex;
-    uint instanceIndex;
     uint vertexOffset;
     uint indexOffset;
     uint indexCount;
@@ -23,6 +22,10 @@ layout(push_constant) uniform PushConstants {
     uint screenWidth;
     uint screenHeight;
     uint debugMeshlets;
+    uint lightCount;
+    uint lightBufferIndex;
+    uint tiledLightHeaderBufferIndex;
+    uint tiledLightIndicesBufferIndex;
     uint padding;
 } pc;
 

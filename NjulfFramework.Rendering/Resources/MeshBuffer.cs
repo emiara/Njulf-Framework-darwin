@@ -144,17 +144,17 @@ public class MeshBuffer : IDisposable
         {
             // Re-finalization: Clean up existing buffers first
             Console.WriteLine("Re-finalizing MeshBuffer...");
-        
-        if (VertexBufferHandle.IsValid)
-            _bufferManager.FreeBuffer(VertexBufferHandle);
-        if (IndexBufferHandle.IsValid)
-            _bufferManager.FreeBuffer(IndexBufferHandle);
-        if (MeshletBufferHandle.IsValid)
-            _bufferManager.FreeBuffer(MeshletBufferHandle);
-        if (MeshletVertexIndicesBufferHandle.IsValid)
-            _bufferManager.FreeBuffer(MeshletVertexIndicesBufferHandle);
-        if (MeshletTriangleIndicesBufferHandle.IsValid)
-            _bufferManager.FreeBuffer(MeshletTriangleIndicesBufferHandle);
+
+            if (VertexBufferHandle.IsValid)
+                _bufferManager.FreeBuffer(VertexBufferHandle);
+            if (IndexBufferHandle.IsValid)
+                _bufferManager.FreeBuffer(IndexBufferHandle);
+            if (MeshletBufferHandle.IsValid)
+                _bufferManager.FreeBuffer(MeshletBufferHandle);
+            if (MeshletVertexIndicesBufferHandle.IsValid)
+                _bufferManager.FreeBuffer(MeshletVertexIndicesBufferHandle);
+            if (MeshletTriangleIndicesBufferHandle.IsValid)
+                _bufferManager.FreeBuffer(MeshletTriangleIndicesBufferHandle);
 
             // Reset meshlet data
             _meshlets.Clear();

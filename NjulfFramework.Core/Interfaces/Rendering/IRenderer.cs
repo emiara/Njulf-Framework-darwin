@@ -29,5 +29,10 @@ namespace NjulfFramework.Core.Interfaces.Rendering
         /// <param name="width">New width</param>
         /// <param name="height">New height</param>
         void Resize(int width, int height);
+
+        /// <summary>
+        /// Access to the light manager for adding and configuring lights
+        /// </summary>
+        ILightManager? LightManager { get; }
     }
 }

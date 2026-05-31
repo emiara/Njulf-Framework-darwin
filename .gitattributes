@@ -4,6 +4,7 @@
 # (Optional) Explicitly mark binary files so they aren't touched
 *.png binary
 *.jpg binary
+/NjulfFramework/NewSponza_Main_glTF_003.bin filter=lfs diff=lfs merge=lfs -text
 *.jpg filter=lfs diff=lfs merge=lfs -text
 *.png filter=lfs diff=lfs merge=lfs -text
 *.gltf filter=lfs diff=lfs merge=lfs -text

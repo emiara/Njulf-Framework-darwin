@@ -3,6 +3,7 @@
 using NjulfFramework.Core.Interfaces.Scene;
 using NjulfFramework.Rendering.Memory;
 using NjulfFramework.Rendering.Resources;
+using NjulfFramework.Rendering.Resources.Handles;
 using NjulfFramework.Rendering.Resources.Descriptors;
 using Silk.NET.Vulkan;
 using Buffer = Silk.NET.Vulkan.Buffer;
@@ -23,11 +24,21 @@ public class SceneDataBuilder : ISceneDataBuilder
     private readonly List<GPUMeshData> _meshData = new();
     private readonly Dictionary<RenderingData.Mesh, uint> _meshIndexMap = new();
     private readonly List<GPUObjectData> _objectData = new();
-    private readonly Dictionary<string, uint> _texturePathToIndexMap = new();
+    // Maps texture path to (bindless_index, texture_handle) for proper cleanup
+    private readonly Dictionary<string, (uint BindlessIndex, TextureHandle TextureHandle)> _texturePathToIndexMap = new();
+    // Track textures that have been loaded but not yet uploaded to GPU
+    private readonly Dictionary<TextureHandle, (byte[] Pixels, uint Width, uint Height, Format Format)> _pendingTextureUploads = new();
     private readonly BindlessDescriptorHeap? _bindlessHeap;
     private readonly MeshManager? _meshManager;
     private readonly TextureManager? _textureManager;
     private Sampler _defaultSampler;
+
+    // Track textures that need acquire barriers for QFOT
+    private readonly List<(Image Image, uint TransferQueueFamily, uint GraphicsQueueFamily)> _texturesNeedingAcquire = new();
+    
+    // Store queue families for QFOT
+    private uint _lastTransferQueueFamily;
+    private uint _lastGraphicsQueueFamily;
 
     public SceneDataBuilder(MeshManager meshManager, TextureManager textureManager, BindlessDescriptorHeap bindlessHeap)
     {
@@ -44,6 +55,28 @@ public class SceneDataBuilder : ISceneDataBuilder
     public IReadOnlyList<GPUMaterial> MaterialData => _materialData.AsReadOnly();
     public IReadOnlyList<GPUMeshData> MeshData => _meshData.AsReadOnly();
 
+    /// <summary>
+    ///     Get the material index for a given material.
+    ///     Returns uint.MaxValue if material not found.
+    /// </summary>
+    public uint GetMaterialIndex(RenderingData.Material material)
+    {
+        if (_materialIndexMap.TryGetValue(material, out var idx))
+            return idx;
+        return uint.MaxValue;
+    }
+
+    /// <summary>
+    ///     Get the mesh index for a given mesh.
+    ///     Returns uint.MaxValue if mesh not found.
+    /// </summary>
+    public uint GetMeshIndex(RenderingData.Mesh mesh)
+    {
+        if (_meshIndexMap.TryGetValue(mesh, out var idx))
+            return idx;
+        return uint.MaxValue;
+    }
+
     public void BuildSceneData()
     {
         // No-op: data is accumulated via AddObject and flushed in UploadToGPU.
@@ -52,6 +85,13 @@ public class SceneDataBuilder : ISceneDataBuilder
 
     public void Dispose()
     {
+        // Free all loaded textures and their bindless indices
+        foreach (var (_, value) in _texturePathToIndexMap)
+        {
+            _bindlessHeap?.FreeTextureIndex(value.BindlessIndex);
+            _textureManager?.FreeTexture(value.TextureHandle);
+        }
+        
         _objectData.Clear();
         _materialData.Clear();
         _meshData.Clear();
@@ -71,7 +111,9 @@ public class SceneDataBuilder : ISceneDataBuilder
         _meshData.Clear();
         _materialIndexMap.Clear();
         _meshIndexMap.Clear();
-        _texturePathToIndexMap.Clear();
+        // NOTE: _texturePathToIndexMap is NOT cleared here intentionally.
+        // Textures are persistent resources that should be loaded once and reused across frames.
+        // Clearing it every frame causes memory leaks as textures are reloaded repeatedly.
     }
 
     /// <summary>
@@ -152,9 +194,16 @@ public class SceneDataBuilder : ISceneDataBuilder
 
         var gpuMaterial = new GPUMaterial(
             material.BaseColorFactor,
+            material.MetallicFactor,
+            material.RoughnessFactor,
+            material.NormalScale,
+            material.OcclusionStrength,
+            material.EmissiveFactor,
             baseColorTexIdx,
             normalTexIdx,
-            metallicRoughnessTexIdx
+            metallicRoughnessTexIdx,
+            occlusionTexIdx,
+            emissiveTexIdx
         );
 
         _materialData.Add(gpuMaterial);
@@ -167,32 +216,42 @@ public class SceneDataBuilder : ISceneDataBuilder
         if (string.IsNullOrEmpty(texturePath))
             return uint.MaxValue;
 
-        if (_texturePathToIndexMap.TryGetValue(texturePath, out var idx))
-            return idx;
+        if (_texturePathToIndexMap.TryGetValue(texturePath, out var entry))
+            return entry.BindlessIndex;
 
         if (_textureManager != null && _bindlessHeap != null)
             try
             {
                 var (pixels, width, height, components) = TextureLoader.LoadTextureFromFile(texturePath);
 
-                var format = TextureLoader.GetVulkanFormat(components,
-                    texturePath.EndsWith("baseColor", StringComparison.OrdinalIgnoreCase) ||
-                    texturePath.EndsWith("albedo", StringComparison.OrdinalIgnoreCase) ||
-                    texturePath.EndsWith("diffuse", StringComparison.OrdinalIgnoreCase));
+                // Determine if texture should use sRGB format
+                // Base color / albedo / diffuse textures should use sRGB
+                // Check both filename and full path for texture type keywords
+                var fileName = Path.GetFileNameWithoutExtension(texturePath);
+                var shouldUseSRGB = fileName.Contains("baseColor", StringComparison.OrdinalIgnoreCase) ||
+                                   fileName.Contains("albedo", StringComparison.OrdinalIgnoreCase) ||
+                                   fileName.Contains("diffuse", StringComparison.OrdinalIgnoreCase) ||
+                                   texturePath.Contains("baseColor", StringComparison.OrdinalIgnoreCase) ||
+                                   texturePath.Contains("albedo", StringComparison.OrdinalIgnoreCase) ||
+                                   texturePath.Contains("diffuse", StringComparison.OrdinalIgnoreCase);
+                
+                var format = TextureLoader.GetVulkanFormat(components, shouldUseSRGB);
 
-                var textureHandle = _textureManager.AllocateTextureWithData(
+                var textureHandle = _textureManager.AllocateTexture(
                     (uint)width,
                     (uint)height,
                     format,
-                    ImageUsageFlags.SampledBit,
-                    pixels);
+                    ImageUsageFlags.SampledBit | ImageUsageFlags.TransferDstBit);
+
+                // Store pixels for later upload to GPU
+                _pendingTextureUploads[textureHandle] = (pixels, (uint)width, (uint)height, format);
 
                 if (_bindlessHeap.TryAllocateTextureIndex(out var textureIndex))
                 {
                     var imageView = _textureManager.GetImageView(textureHandle);
                     _bindlessHeap.UpdateTexture(textureIndex, imageView, _defaultSampler);
 
-                    _texturePathToIndexMap[texturePath] = textureIndex;
+                    _texturePathToIndexMap[texturePath] = (textureIndex, textureHandle);
                     return textureIndex;
                 }
             }
@@ -244,8 +303,31 @@ public class SceneDataBuilder : ISceneDataBuilder
     public unsafe void UploadToGPU(Vk vk, CommandBuffer cmd, FrameUploadRing uploadRing,
         Buffer objectDataBuffer, Buffer materialDataBuffer, Buffer meshDataBuffer)
     {
-        if (_objectData.Count == 0)
+        UploadToGPU(vk, cmd, Vk.QueueFamilyIgnored, Vk.QueueFamilyIgnored, uploadRing,
+            objectDataBuffer, materialDataBuffer, meshDataBuffer);
+    }
+
+    /// <summary>
+    ///     Record copy commands to upload all scene data to GPU with proper queue family ownership transfer.
+    /// </summary>
+    /// <param name="vk">Vulkan API</param>
+    /// <param name="transferCommandBuffer">Command buffer for transfer queue operations</param>
+    /// <param name="transferQueueFamily">Queue family index for transfer operations</param>
+    /// <param name="graphicsQueueFamily">Queue family index for graphics operations</param>
+    /// <param name="uploadRing">Upload ring buffer</param>
+    /// <param name="objectDataBuffer">Destination buffer for object data</param>
+    /// <param name="materialDataBuffer">Destination buffer for material data</param>
+    /// <param name="meshDataBuffer">Destination buffer for mesh data</param>
+    public unsafe void UploadToGPU(Vk vk, CommandBuffer transferCommandBuffer,
+        uint transferQueueFamily, uint graphicsQueueFamily, FrameUploadRing uploadRing,
+        Buffer objectDataBuffer, Buffer materialDataBuffer, Buffer meshDataBuffer)
+    {
+        if (_objectData.Count == 0 && _pendingTextureUploads.Count == 0)
             return;
+
+        // Store queue families for later use by RecordAcquireBarriers
+        _lastTransferQueueFamily = transferQueueFamily;
+        _lastGraphicsQueueFamily = graphicsQueueFamily;
 
         var objectArray = _objectData.ToArray();
         var materialArray = _materialData.ToArray();
@@ -261,22 +343,221 @@ public class SceneDataBuilder : ISceneDataBuilder
         if (objectDataSize > 0)
         {
             var objectCopy = new BufferCopy { SrcOffset = objectSrcOffset, DstOffset = 0, Size = objectDataSize };
-            vk.CmdCopyBuffer(cmd, srcBuffer, objectDataBuffer, 1, &objectCopy);
+            vk.CmdCopyBuffer(transferCommandBuffer, srcBuffer, objectDataBuffer, 1, &objectCopy);
         }
 
         var materialDataSize = (uint)materialArray.Length * GPUMaterial.GetSizeInBytes();
         if (materialDataSize > 0)
         {
             var materialCopy = new BufferCopy { SrcOffset = materialSrcOffset, DstOffset = 0, Size = materialDataSize };
-            vk.CmdCopyBuffer(cmd, srcBuffer, materialDataBuffer, 1, &materialCopy);
+            vk.CmdCopyBuffer(transferCommandBuffer, srcBuffer, materialDataBuffer, 1, &materialCopy);
         }
 
         var meshDataSize = (uint)meshArray.Length * GPUMeshData.GetSizeInBytes();
         if (meshDataSize > 0)
         {
             var meshCopy = new BufferCopy { SrcOffset = meshSrcOffset, DstOffset = 0, Size = meshDataSize };
-            vk.CmdCopyBuffer(cmd, srcBuffer, meshDataBuffer, 1, &meshCopy);
+            vk.CmdCopyBuffer(transferCommandBuffer, srcBuffer, meshDataBuffer, 1, &meshCopy);
         }
+
+        // Upload pending texture data to GPU with proper QFOT
+        if (_pendingTextureUploads.Count > 0)
+            UploadPendingTextures(vk, transferCommandBuffer, transferQueueFamily, graphicsQueueFamily,
+                uploadRing, srcBuffer);
+    }
+
+    /// <summary>
+    /// Upload texture data from staging buffer to GPU images.
+    /// </summary>
+    private unsafe void UploadPendingTextures(Vk vk, CommandBuffer cmd, FrameUploadRing uploadRing, Buffer srcBuffer)
+    {
+        UploadPendingTextures(vk, cmd, Vk.QueueFamilyIgnored, Vk.QueueFamilyIgnored, uploadRing, srcBuffer);
+    }
+
+    /// <summary>
+    /// Upload texture data from staging buffer to GPU images with proper queue family ownership transfer.
+    /// 
+    /// Industry-standard QFOT pattern:
+    /// 1. On transfer queue: copy + release barrier (TRANSFER -> BOTTOM_OF_PIPE, queue release from transfer -> graphics)
+    /// 2. On graphics queue: acquire barrier (TOP_OF_PIPE -> FRAGMENT_SHADER, queue acquire from transfer -> graphics)
+    ///    (acquire barriers are recorded separately via RecordAcquireBarriers)
+    /// </summary>
+    private unsafe void UploadPendingTextures(Vk vk, CommandBuffer transferCmd,
+        uint transferQueueFamily, uint graphicsQueueFamily, FrameUploadRing uploadRing, Buffer srcBuffer)
+    {
+        if (_textureManager == null)
+            return;
+
+        // Clear previous acquire tracking
+        _texturesNeedingAcquire.Clear();
+
+        // Check if we're using separate queues (QFOT needed)
+        bool useQfot = transferQueueFamily != graphicsQueueFamily &&
+                       transferQueueFamily != Vk.QueueFamilyIgnored &&
+                       graphicsQueueFamily != Vk.QueueFamilyIgnored;
+
+        foreach (var (textureHandle, textureData) in _pendingTextureUploads)
+        {
+            var (pixels, width, height, format) = textureData;
+
+            // Write texture pixels to staging buffer
+            uploadRing.WriteData(pixels, out var textureSrcOffset);
+
+            var image = _textureManager.GetImage(textureHandle);
+
+            var region = new BufferImageCopy
+            {
+                BufferOffset = textureSrcOffset,
+                BufferRowLength = 0,
+                BufferImageHeight = 0,
+                ImageSubresource = new ImageSubresourceLayers
+                {
+                    AspectMask = ImageAspectFlags.ColorBit,
+                    MipLevel = 0,
+                    BaseArrayLayer = 0,
+                    LayerCount = 1
+                },
+                ImageOffset = new Offset3D { X = 0, Y = 0, Z = 0 },
+                ImageExtent = new Extent3D { Width = width, Height = height, Depth = 1 }
+            };
+
+            var subresourceRange = new ImageSubresourceRange
+            {
+                AspectMask = ImageAspectFlags.ColorBit,
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            };
+
+            if (useQfot)
+            {
+                // === TRANSFER QUEUE OPERATIONS ===
+                
+                // Transition: UNDEFINED -> TRANSFER_DST_OPTIMAL
+                var barrier = new ImageMemoryBarrier
+                {
+                    SType = StructureType.ImageMemoryBarrier,
+                    SrcAccessMask = 0,
+                    DstAccessMask = AccessFlags.TransferWriteBit,
+                    OldLayout = ImageLayout.Undefined,
+                    NewLayout = ImageLayout.TransferDstOptimal,
+                    SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                    DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                    Image = image,
+                    SubresourceRange = subresourceRange
+                };
+
+                vk.CmdPipelineBarrier(transferCmd, PipelineStageFlags.TopOfPipeBit, PipelineStageFlags.TransferBit, 0,
+                    0, null, 0, null, 1, &barrier);
+
+                // Copy from staging buffer to image
+                vk.CmdCopyBufferToImage(transferCmd, srcBuffer, image, ImageLayout.TransferDstOptimal, 1, &region);
+
+                // Release barrier: TRANSFER_DST_OPTIMAL -> TRANSFER_DST_OPTIMAL with queue family release
+                // This releases ownership from transfer queue family to graphics queue family
+                barrier.OldLayout = ImageLayout.TransferDstOptimal;
+                barrier.NewLayout = ImageLayout.TransferDstOptimal;
+                barrier.SrcAccessMask = AccessFlags.TransferWriteBit;
+                barrier.DstAccessMask = 0;
+                barrier.SrcQueueFamilyIndex = transferQueueFamily;
+                barrier.DstQueueFamilyIndex = graphicsQueueFamily;
+
+                vk.CmdPipelineBarrier(transferCmd, PipelineStageFlags.TransferBit, PipelineStageFlags.BottomOfPipeBit, 0,
+                    0, null, 0, null, 1, &barrier);
+
+                // Track texture for acquire barrier on graphics queue (will use _last* queue families)
+                _texturesNeedingAcquire.Add((image, transferQueueFamily, graphicsQueueFamily));
+            }
+            else
+            {
+                // === SINGLE QUEUE FALLBACK (original behavior) ===
+                
+                // Transition: UNDEFINED -> TRANSFER_DST_OPTIMAL
+                var barrier = new ImageMemoryBarrier
+                {
+                    SType = StructureType.ImageMemoryBarrier,
+                    SrcAccessMask = 0,
+                    DstAccessMask = AccessFlags.TransferWriteBit,
+                    OldLayout = ImageLayout.Undefined,
+                    NewLayout = ImageLayout.TransferDstOptimal,
+                    SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                    DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                    Image = image,
+                    SubresourceRange = subresourceRange
+                };
+
+                vk.CmdPipelineBarrier(transferCmd, PipelineStageFlags.TopOfPipeBit, PipelineStageFlags.TransferBit, 0,
+                    0, null, 0, null, 1, &barrier);
+
+                // Copy from staging buffer to image
+                vk.CmdCopyBufferToImage(transferCmd, srcBuffer, image, ImageLayout.TransferDstOptimal, 1, &region);
+
+                // Transition: TRANSFER_DST_OPTIMAL -> SHADER_READ_ONLY_OPTIMAL
+                barrier.OldLayout = ImageLayout.TransferDstOptimal;
+                barrier.NewLayout = ImageLayout.ShaderReadOnlyOptimal;
+                barrier.SrcAccessMask = AccessFlags.TransferWriteBit;
+                barrier.DstAccessMask = AccessFlags.ShaderReadBit;
+
+                vk.CmdPipelineBarrier(transferCmd, PipelineStageFlags.TransferBit, PipelineStageFlags.FragmentShaderBit, 0,
+                    0, null, 0, null, 1, &barrier);
+            }
+
+            Console.WriteLine("Uploaded texture " + textureHandle.Index + " to GPU");
+        }
+
+        _pendingTextureUploads.Clear();
+    }
+
+    /// <summary>
+    /// Record acquire barriers for QFOT on the graphics command buffer.
+    /// Must be called while the graphics command buffer is being recorded.
+    /// </summary>
+    public unsafe void RecordAcquireBarriers(Vk vk, CommandBuffer graphicsCmd)
+    {
+        if (_texturesNeedingAcquire.Count == 0)
+            return;
+
+        var barriers = stackalloc ImageMemoryBarrier[_texturesNeedingAcquire.Count];
+        int barrierCount = 0;
+
+        foreach (var (image, transferQueueFamily, graphicsQueueFamily) in _texturesNeedingAcquire)
+        {
+            barriers[barrierCount] = new ImageMemoryBarrier
+            {
+                SType = StructureType.ImageMemoryBarrier,
+                SrcAccessMask = 0,
+                DstAccessMask = AccessFlags.ShaderReadBit,
+                OldLayout = ImageLayout.TransferDstOptimal,
+                NewLayout = ImageLayout.ShaderReadOnlyOptimal,
+                SrcQueueFamilyIndex = transferQueueFamily,
+                DstQueueFamilyIndex = graphicsQueueFamily,
+                Image = image,
+                SubresourceRange = new ImageSubresourceRange
+                {
+                    AspectMask = ImageAspectFlags.ColorBit,
+                    BaseMipLevel = 0,
+                    LevelCount = 1,
+                    BaseArrayLayer = 0,
+                    LayerCount = 1
+                }
+            };
+            barrierCount++;
+        }
+
+        if (barrierCount > 0)
+        {
+            vk.CmdPipelineBarrier(
+                graphicsCmd,
+                PipelineStageFlags.TopOfPipeBit,
+                PipelineStageFlags.FragmentShaderBit,
+                0,
+                0, null,
+                0, null,
+                (uint)barrierCount, barriers);
+        }
+
+        _texturesNeedingAcquire.Clear();
     }
 
     public ulong GetTotalUploadSizeInBytes()

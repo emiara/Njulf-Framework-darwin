@@ -43,11 +43,29 @@ public class InputActionBuilder
     }
 
     /// <summary>
-    ///     Adds a mouse binding to the action.
+    ///     Adds a mouse button binding to the action.
     /// </summary>
     public InputActionBuilder AddMouseBinding(int button, float scale = 1.0f)
     {
         _action.Bindings.Add(InputBinding.ForMouse(button, scale));
+        return this;
+    }
+
+    /// <summary>
+    ///     Adds a mouse X axis binding to the action.
+    /// </summary>
+    public InputActionBuilder AddMouseXBinding(float scale = 1.0f)
+    {
+        _action.Bindings.Add(InputBinding.ForMouseXAxis(scale));
+        return this;
+    }
+
+    /// <summary>
+    ///     Adds a mouse Y axis binding to the action.
+    /// </summary>
+    public InputActionBuilder AddMouseYBinding(float scale = 1.0f)
+    {
+        _action.Bindings.Add(InputBinding.ForMouseYAxis(scale));
         return this;
     }
 

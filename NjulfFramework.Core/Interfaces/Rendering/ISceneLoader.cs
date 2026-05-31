@@ -16,4 +16,10 @@ public interface ISceneLoader
     ///     Also re-finalizes GPU mesh buffers so the objects are visible immediately.
     /// </summary>
     void LoadModelIntoScene(IModel model);
+
+    /// <summary>
+    ///     Update the transform of all render objects belonging to a model.
+    ///     Call this when you change a model's RootNode.Transform at runtime.
+    /// </summary>
+    void UpdateModelTransform(IModel model, System.Numerics.Matrix4x4 transform);
 }

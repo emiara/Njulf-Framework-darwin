@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.EXT;
 
@@ -110,17 +111,20 @@ public class DynamicMeshPass : RenderGraphPass
 
             foreach (var obj in ctx.VisibleObjects)
             {
-                if (obj?.Mesh == null || ctx.MeshManager == null)
+                if (obj?.Mesh == null || ctx.MeshManager == null || obj.Material == null)
                     continue;
 
                 var meshEntry = ctx.MeshManager.GetOrCreateMeshGpu(obj.Mesh);
+
+                // Get material index from scene data builder
+                var materialIndex = ctx.SceneDataBuilder?.GetMaterialIndex(obj.Material) ?? 0;
 
                 var pushConstants = new Data.RenderingData.PushConstants
                 {
                     Model = obj.Transform,
                     View = ctx.View,
                     Projection = ctx.Projection,
-                    MaterialIndex = 0,
+                    MaterialIndex = materialIndex,
                     VertexOffset = meshEntry.VertexOffset,
                     IndexOffset = meshEntry.IndexOffset,
                     IndexCount = meshEntry.IndexCount,
@@ -138,14 +142,15 @@ public class DynamicMeshPass : RenderGraphPass
                     Padding = 0
                 };
 
+                // Industry standard: Use the actual size of the PushConstants struct
                 _vk.CmdPushConstants(cmd, _pipeline.PipelineLayout,
                     ShaderStageFlags.MeshBitExt | ShaderStageFlags.FragmentBit | ShaderStageFlags.TaskBitExt,
-                    0, (uint)sizeof(Data.RenderingData.PushConstants), &pushConstants);
+                    0, (uint)Marshal.SizeOf<Data.RenderingData.PushConstants>(), &pushConstants);
 
                 if (meshEntry.MeshletCount == 0)
                     continue;
 
-                _meshShader.CmdDrawMeshTask(cmd, 1, 1, 1);
+                _meshShader.CmdDrawMeshTask(cmd, meshEntry.MeshletCount, 1, 1);
             }
         }
         finally

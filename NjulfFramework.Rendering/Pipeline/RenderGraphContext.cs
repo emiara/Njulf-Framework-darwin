@@ -78,6 +78,11 @@ public class RenderGraphContext(uint width, uint height, BindlessDescriptorHeap 
     public MeshManager? MeshManager { get; set; }
 
     /// <summary>
+    ///     Scene data builder for accessing material/mesh indices.
+    /// </summary>
+    public Data.SceneDataBuilder? SceneDataBuilder { get; set; }
+
+    /// <summary>
     ///     Descriptor set for mesh vertex/index buffers.
     /// </summary>
     public DescriptorSet MeshBuffersSet { get; set; }

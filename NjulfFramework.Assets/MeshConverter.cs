@@ -74,7 +74,11 @@ public class MeshConverter : IModelConverter
     /// <summary>
     ///     Convert Assimp mesh to framework mesh
     /// </summary>
-    public unsafe FrameworkMesh ConvertMesh(Mesh* assimpMesh, int meshIndex)
+    /// <param name="assimpMesh">Assimp mesh pointer</param>
+    /// <param name="meshIndex">Mesh index</param>
+    /// <param name="flipWinding">Whether to flip triangle winding (swap index 1 and 2)
+    /// for glTF standard compliance (CCW front face)</param>
+    public unsafe FrameworkMesh ConvertMesh(Mesh* assimpMesh, int meshIndex, bool flipWinding = false)
     {
         if (assimpMesh == null)
             throw new ArgumentNullException(nameof(assimpMesh));
@@ -124,9 +128,19 @@ public class MeshConverter : IModelConverter
             if (face.MNumIndices != 3)
                 throw new InvalidOperationException("Mesh is not triangulated");
 
-            indices[i * 3] = face.MIndices[0];
-            indices[i * 3 + 1] = face.MIndices[1];
-            indices[i * 3 + 2] = face.MIndices[2];
+            if (flipWinding)
+            {
+                // Flip winding: swap index 1 and 2 to convert CW to CCW or vice versa
+                indices[i * 3] = face.MIndices[0];
+                indices[i * 3 + 1] = face.MIndices[2];
+                indices[i * 3 + 2] = face.MIndices[1];
+            }
+            else
+            {
+                indices[i * 3] = face.MIndices[0];
+                indices[i * 3 + 1] = face.MIndices[1];
+                indices[i * 3 + 2] = face.MIndices[2];
+            }
         }
 
         // Calculate bounding box

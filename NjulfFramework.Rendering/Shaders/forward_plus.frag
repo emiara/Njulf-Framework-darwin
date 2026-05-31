@@ -208,32 +208,59 @@ void main()
         return;
     }
 
-    // Get material data (simplified - would read from buffer in real implementation)
-    PBRMaterial material;
-    material.baseColorFactor = vec4(0.8, 0.8, 0.8, 1.0);// Default white
-    material.metallicFactor = 0.5;
-    material.roughnessFactor = 0.5;
-    material.baseColorTextureIndex = -1;// No texture
-    material.metallicRoughnessTextureIndex = -1;
-    material.normalTextureIndex = -1;
-    material.occlusionTextureIndex = -1;
-    material.emissiveTextureIndex = -1;
-    material.normalScale = 1.0;
-    material.occlusionStrength = 1.0;
-    material.emissiveFactor = vec3(0.0);
-
+    // Read material data from material buffer (bindless index 1)
+    // MUST match C# GPUMaterial struct layout exactly (Pack=16, std430 equivalent)
+    // Layout (80 bytes = 20 uints):
+    //   0-3:   BaseColor (vec4) - 16 bytes
+    //   4:     MetallicFactor (float) - 4 bytes
+    //   5:     RoughnessFactor (float) - 4 bytes
+    //   6:     NormalScale (float) - 4 bytes
+    //   7:     OcclusionStrength (float) - 4 bytes
+    //   8-10:  EmissiveFactor (vec3) - 12 bytes
+    //   11:    Padding1 (uint) - 4 bytes
+    //   12:    BaseColorTextureIndex (uint) - 4 bytes
+    //   13:    NormalTextureIndex (uint) - 4 bytes
+    //   14:    MetallicRoughnessTextureIndex (uint) - 4 bytes
+    //   15:    OcclusionTextureIndex (uint) - 4 bytes
+    //   16:    EmissiveTextureIndex (uint) - 4 bytes
+    //   17:    Padding2 (uint) - 4 bytes
+    //   18-19: Struct padding to 80 bytes (2 uints)
+    uint matOffset = inMaterialIndex * 20u;
+    
+    // Read from material buffer (bindless index 1)
+    vec4 baseColorFactor = vec4(
+        uintBitsToFloat(buffers[1u].data[matOffset + 0u]),
+        uintBitsToFloat(buffers[1u].data[matOffset + 1u]),
+        uintBitsToFloat(buffers[1u].data[matOffset + 2u]),
+        uintBitsToFloat(buffers[1u].data[matOffset + 3u])
+    );
+    float metallicFactor = uintBitsToFloat(buffers[1u].data[matOffset + 4u]);
+    float roughnessFactor = uintBitsToFloat(buffers[1u].data[matOffset + 5u]);
+    float normalScale = uintBitsToFloat(buffers[1u].data[matOffset + 6u]);
+    float occlusionStrength = uintBitsToFloat(buffers[1u].data[matOffset + 7u]);
+    vec3 emissiveFactor = vec3(
+        uintBitsToFloat(buffers[1u].data[matOffset + 8u]),
+        uintBitsToFloat(buffers[1u].data[matOffset + 9u]),
+        uintBitsToFloat(buffers[1u].data[matOffset + 10u])
+    );
+    int baseColorTextureIndex = int(buffers[1u].data[matOffset + 12u]);
+    int normalTextureIndex = int(buffers[1u].data[matOffset + 13u]);
+    int metallicRoughnessTextureIndex = int(buffers[1u].data[matOffset + 14u]);
+    int occlusionTextureIndex = int(buffers[1u].data[matOffset + 15u]);
+    int emissiveTextureIndex = int(buffers[1u].data[matOffset + 16u]);
+    
     // Sample textures if available
-    vec3 albedo = material.baseColorFactor.rgb;
-    if (material.baseColorTextureIndex >= 0)
+    vec3 albedo = baseColorFactor.rgb;
+    if (baseColorTextureIndex >= 0)
     {
-        albedo = pow(texture(textures[material.baseColorTextureIndex], inTexCoord).rgb, vec3(2.2));
+        albedo = pow(texture(textures[baseColorTextureIndex], inTexCoord).rgb, vec3(2.2));
     }
 
-    float metallic = material.metallicFactor;
-    float roughness = material.roughnessFactor;
-    if (material.metallicRoughnessTextureIndex >= 0)
+    float metallic = metallicFactor;
+    float roughness = roughnessFactor;
+    if (metallicRoughnessTextureIndex >= 0)
     {
-        vec4 mrSample = texture(textures[material.metallicRoughnessTextureIndex], inTexCoord);
+        vec4 mrSample = texture(textures[metallicRoughnessTextureIndex], inTexCoord);
         metallic = mrSample.b;// Metallic in blue channel
         roughness = mrSample.g;// Roughness in green channel
     }
@@ -242,27 +269,24 @@ void main()
     vec3 normal = inNormal;
     float nlen = length(normal);
     if (nlen < 1e-5)
-    normal = vec3(0.0, 1.0, 0.0);
+        normal = vec3(0.0, 1.0, 0.0);
     else
-    normal /= nlen;
+        normal /= nlen;
 
-    if (material.normalTextureIndex >= 0)
+    if (normalTextureIndex >= 0)
     {
-        vec3 tangentNormal = texture(textures[material.normalTextureIndex], inTexCoord).xyz * 2.0 - 1.0;
-        tangentNormal.xy *= material.normalScale;
+        vec3 tangentNormal = texture(textures[normalTextureIndex], inTexCoord).xyz * 2.0 - 1.0;
+        tangentNormal.xy *= normalScale;
         tangentNormal = normalize(tangentNormal);
-
-        // TBN matrix would be needed here for proper normal mapping
-        // For now, just apply as perturbation
         normal = normalize(normal + tangentNormal * 0.1);
     }
 
     // Ambient occlusion
     float ao = 1.0;
-    if (material.occlusionTextureIndex >= 0)
+    if (occlusionTextureIndex >= 0)
     {
-        ao = texture(textures[material.occlusionTextureIndex], inTexCoord).r;
-        ao = mix(1.0, ao, material.occlusionStrength);
+        ao = texture(textures[occlusionTextureIndex], inTexCoord).r;
+        ao = mix(1.0, ao, occlusionStrength);
     }
 
     // View direction

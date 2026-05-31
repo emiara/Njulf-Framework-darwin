@@ -29,14 +29,16 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     private readonly BufferManager? _bufferManager;
     private readonly FrameUploadRing _frameUploadRing;
     private TextureManager? _textureManager;
+    private LightManager? _lightManagerImpl; // concrete type for internal Vulkan calls
 
     // Phase 2: Scene objects
     private readonly Dictionary<string, Data.RenderingData.RenderObject> _renderObjects = new();
+    private readonly Dictionary<string, List<string>> _modelToRenderObjectNames = new();
 
     private SceneDataBuilder? _sceneBuilder;
 
-    // Camera
-    private readonly Camera _camera;
+    // Camera - provided via DI, used for view/projection matrices
+    private readonly ICamera _camera;
     private readonly VulkanContext? _vulkanContext;
     private readonly IWindow _window;
     private BindlessDescriptorHeap? _bindlessHeap;
@@ -80,7 +82,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     private SynchronizationManager? _synchronizationManager;
     private TiledLightCullingPass? _tiledLightCullingPass;
 
-    public VulkanRenderer(IWindow window, Camera camera)
+    public VulkanRenderer(IWindow window, ICamera camera)
     {
         _window = window ?? throw new ArgumentNullException(nameof(window));
         _camera = camera ?? throw new ArgumentNullException(nameof(camera));
@@ -93,7 +95,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     public VulkanContext VulkanContext => _vulkanContext!;
     public SwapchainManager SwapchainManager => _swapchainManager!;
 
-    public LightManager? LightManager { get; private set; }
+    
+    public ILightManager? LightManager => _lightManagerImpl;
 
     public void Dispose()
     {
@@ -104,7 +107,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         _meshManager?.Dispose();
         _textureManager?.Dispose();
         _bufferManager?.Dispose();
-        LightManager?.Dispose();
+        _lightManagerImpl?.Dispose();
         _tiledLightCullingPass?.Dispose();
 
         _bindlessHeap?.Dispose();
@@ -258,10 +261,11 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
 
             InitializeSceneBuffers();
 
-            // Register scene buffers in bindless heap
-            _bindlessHeap.UpdateBuffer(0, _sceneObjectBuffer, 16 * 1024 * 1024); // Object buffer index 0
-            _bindlessHeap.UpdateBuffer(1, _sceneMaterialBuffer, 4 * 1024 * 1024); // Material buffer index 1
-            _bindlessHeap.UpdateBuffer(2, _sceneMeshBuffer, 8 * 1024 * 1024); // Mesh buffer index 2
+            // Register scene buffers in bindless heap at fixed indices
+            // These must match the shader binding indices
+            _bindlessHeap.UpdateBuffer(0, _sceneObjectBuffer, 16 * 1024 * 1024); // Object buffer at index 0
+            _bindlessHeap.UpdateBuffer(1, _sceneMaterialBuffer, 4 * 1024 * 1024); // Material buffer at index 1
+            _bindlessHeap.UpdateBuffer(2, _sceneMeshBuffer, 8 * 1024 * 1024); // Mesh buffer at index 2
             Console.WriteLine("✓ Scene buffers registered in bindless heap");
 
             // Create graphics pipeline
@@ -296,23 +300,23 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
                 },
                 _swapchainManager.SwapchainImageFormat);
 
-            // Phase 3.5: Initialize light manager
-            LightManager = new LightManager(
-                _vulkanContext.VulkanApi,
-                _vulkanContext.Device,
-                _bufferManager,
-                _bindlessHeap);
-            Console.WriteLine("✓ Light manager initialized");
+                // Phase 3.5: Initialize light manager
+                _lightManagerImpl = new LightManager(
+                    _vulkanContext.VulkanApi,
+                    _vulkanContext.Device,
+                    _bufferManager,
+                    _bindlessHeap);
+                Console.WriteLine("✓ Light manager initialized");
 
-            // Phase 3.5: Initialize tiled light culling pass
-            _tiledLightCullingPass = new TiledLightCullingPass(
-                "Tiled Light Culling",
-                _vulkanContext.VulkanApi,
-                _vulkanContext.Device,
-                LightManager,
-                _bufferManager,
-                _descriptorSetLayouts,
-                _bindlessHeap);
+                // Phase 3.5: Initialize tiled light culling pass
+                _tiledLightCullingPass = new TiledLightCullingPass(
+                    "Tiled Light Culling",
+                    _vulkanContext.VulkanApi,
+                    _vulkanContext.Device,
+                    _lightManagerImpl,
+                    _bufferManager,
+                    _descriptorSetLayouts,
+                    _bindlessHeap);
             Console.WriteLine("✓ Tiled light culling pass initialized");
 
             // Setup render graph with passes
@@ -537,16 +541,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         //     cube.Transform = rotation * cube.Transform;
         // }
 
-        // Add test lights (temporary - for demonstration)
-        if (_frameIndex == 0 && LightManager != null)
-        {
-            LightManager.AddPointLight(new Vector3(5, 0, 0), 10, new Vector3(1, 1, 1), 1.0f);
-            LightManager.AddPointLight(new Vector3(-5, 3, 0), 10, new Vector3(1, 0, 0), 0.5f);
-            LightManager.AddPointLight(new Vector3(0, 3, 5), 10, new Vector3(0, 1, 0), 0.6f);
-            Console.WriteLine("✓ Test lights added to scene");
 
-            _frameIndex++;
-        }
     }
 
     /// <summary>
@@ -614,16 +609,19 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
                 _meshManager.UploadMeshToGPU(renderObject.Mesh, transferCommandBuffer, _frameUploadRing);
 
         // Write CPU scene data to staging buffer and record copy commands
+        // Use QFOT (Queue Family Ownership Transfer) for proper texture synchronization
         _sceneBuilder.UploadToGPU(
             _vulkanContext.VulkanApi,
             transferCommandBuffer,
+            _vulkanContext.TransferQueueFamily,
+            _vulkanContext.GraphicsQueueFamily,
             _frameUploadRing,
             _sceneObjectBuffer,
             _sceneMaterialBuffer,
             _sceneMeshBuffer);
 
-        // Phase 3.5: Upload lights
-        LightManager?.UploadToGPU(transferCommandBuffer, _frameUploadRing);
+            // Phase 3.5: Upload lights
+            _lightManagerImpl?.UploadToGPU(transferCommandBuffer, _frameUploadRing);
 
         _commandBufferManager.EndRecording(transferCommandBuffer);
 
@@ -635,6 +633,9 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         var commandBuffer = _commandBufferManager.CommandBuffers[frameIndex];
         _commandBufferManager.ResetCommandBuffer(commandBuffer);
         _commandBufferManager.BeginRecording(commandBuffer);
+
+        // Record acquire barriers for QFOT on graphics command buffer
+        _sceneBuilder.RecordAcquireBarriers(_vulkanContext.VulkanApi, commandBuffer);
 
         // Transition: tracked layout -> COLOR_ATTACHMENT_OPTIMAL
         var swapchainImage = _swapchainManager.SwapchainImages[imageIndex];
@@ -658,6 +659,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             CameraPosition = _camera.GetPosition(),
             BindlessHeap = _bindlessHeap,
             MeshManager = _meshManager,
+            SceneDataBuilder = _sceneBuilder,
             MeshBuffersSet = _meshBuffersDescriptorSet,
             LightCount = LightManager?.LightCount ?? 0,
             LightBufferIndex = LightManager?.LightBufferBindlessIndex ?? 0,
@@ -751,176 +753,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
 
         return surface;
     }
-
-    private void RecordRenderCommands(CommandBuffer commandBuffer, uint imageIndex, uint frameIndex)
-    {
-        if (_renderGraph == null || _swapchainManager == null || _meshPipeline == null || _bindlessHeap == null)
-            throw new InvalidOperationException(
-                "RenderGraph, SwapchainManager, Pipeline, or BindlessHeap not initialized");
-
-        var _vk = _vulkanContext.VulkanApi;
-
-        // Get the swapchain image for layout transition
-        var swapchainImage = _swapchainManager.SwapchainImages[imageIndex];
-
-        // Build render context
-        var context = new RenderGraphContext(
-            _swapchainManager.SwapchainExtent.Width,
-            _swapchainManager.SwapchainExtent.Height,
-            _bindlessHeap)
-        {
-            Width = _swapchainManager.SwapchainExtent.Width,
-            Height = _swapchainManager.SwapchainExtent.Height,
-            FrameIndex = frameIndex,
-            VisibleObjects = _renderObjects.Values
-                .Where(obj => obj != null && obj.Visible)
-                .ToList(),
-            ViewProjection = _camera.GetViewMatrix() * _camera.GetProjectionMatrix(),
-            View = _camera.GetViewMatrix(),
-            Projection = _camera.GetProjectionMatrix(),
-            CameraPosition = _camera.GetPosition(),
-            BindlessHeap = _bindlessHeap,
-            MeshManager = _meshManager,
-            MeshBuffersSet = _meshBuffersDescriptorSet,
-            LightCount = LightManager?.LightCount ?? 0,
-            LightBufferIndex = LightManager?.LightBufferBindlessIndex ?? 0,
-            TiledLightHeaderBufferIndex = _tiledLightCullingPass?.TiledLightHeaderBufferIndex ?? 0,
-            TiledLightIndicesBufferIndex = _tiledLightCullingPass?.TiledLightIndicesBufferIndex ?? 0
-        };
-
-        // Get the swapchain image view for this frame
-        var colorImageView = _swapchainManager.SwapchainImageViews[imageIndex];
-        if (colorImageView.Handle == 0)
-            throw new InvalidOperationException($"Failed to get swapchain image view for index {imageIndex}");
-
-        // Define color attachment (swapchain image)
-        var colorAttachment = new RenderingAttachmentInfo
-        {
-            SType = StructureType.RenderingAttachmentInfo,
-            ImageView = colorImageView,
-            ImageLayout = ImageLayout.ColorAttachmentOptimal,
-            LoadOp = AttachmentLoadOp.Clear,
-            StoreOp = AttachmentStoreOp.Store,
-            ClearValue = new ClearValue { Color = new ClearColorValue(0.1f, 0.1f, 0.1f, 1.0f) }
-        };
-
-        // Define depth attachment (if you have one)
-        RenderingAttachmentInfo* depthAttachment = null;
-        RenderingAttachmentInfo depthAttachmentInfo = default;
-        if (_depthImageView.Handle != 0)
-        {
-            depthAttachmentInfo = new RenderingAttachmentInfo
-            {
-                SType = StructureType.RenderingAttachmentInfo,
-                ImageView = _depthImageView,
-                ImageLayout = ImageLayout.DepthAttachmentOptimal,
-                LoadOp = AttachmentLoadOp.Clear,
-                StoreOp = AttachmentStoreOp.DontCare,
-                ClearValue = new ClearValue { DepthStencil = new ClearDepthStencilValue(1.0f, 0) }
-            };
-            depthAttachment = &depthAttachmentInfo;
-        }
-
-        // Begin dynamic rendering
-        var renderingInfo = new RenderingInfo
-        {
-            SType = StructureType.RenderingInfo,
-            RenderArea = new Rect2D
-            {
-                Offset = new Offset2D(0, 0),
-                Extent = _swapchainManager.SwapchainExtent
-            },
-            LayerCount = 1,
-            ColorAttachmentCount = 1,
-            PColorAttachments = &colorAttachment,
-            PDepthAttachment = depthAttachment
-        };
-
-        _vk.CmdBeginRendering(commandBuffer, &renderingInfo);
-
-        // Bind graphics pipeline
-        _vk.CmdBindPipeline(commandBuffer, PipelineBindPoint.Graphics, _meshPipeline.Pipeline);
-
-        // Bind descriptor sets (set 0 = buffers, set 1 = textures)
-        var descriptorSets = stackalloc DescriptorSet[]
-        {
-            _bindlessHeap.BufferSet,
-            _bindlessHeap.TextureSet,
-            _meshBuffersDescriptorSet
-        };
-        _vk.CmdBindDescriptorSets(commandBuffer, PipelineBindPoint.Graphics, _meshPipeline.PipelineLayout,
-            0, 3, descriptorSets, 0, null);
-
-        // Set viewport
-        var viewport = new Viewport
-        {
-            X = 0,
-            Y = 0,
-            Width = _swapchainManager.SwapchainExtent.Width,
-            Height = _swapchainManager.SwapchainExtent.Height,
-            MinDepth = 0,
-            MaxDepth = 1
-        };
-        _vk.CmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-        // Set scissor
-        var scissor = new Rect2D
-        {
-            Offset = new Offset2D(0, 0),
-            Extent = _swapchainManager.SwapchainExtent
-        };
-        _vk.CmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-        // Draw all visible objects
-        foreach (var renderObject in context.VisibleObjects)
-        {
-            if (renderObject?.Mesh == null)
-                continue;
-
-            var mesh = renderObject.Mesh;
-            var meshEntry = _meshManager.GetOrCreateMeshGpu(mesh);
-
-            // ✅ Use PushConstants from RenderingData
-            var pushConstants = new Data.RenderingData.PushConstants
-            {
-                Model = renderObject.Transform,
-                View = _camera.GetViewMatrix(),
-                Projection = _camera.GetProjectionMatrix(),
-                MaterialIndex = 0,
-                VertexOffset = meshEntry.VertexOffset,
-                IndexOffset = meshEntry.IndexOffset,
-                IndexCount = meshEntry.IndexCount,
-                VertexCount = meshEntry.VertexCount,
-                MeshletOffset = meshEntry.MeshletOffset,
-                MeshletCount = meshEntry.MeshletCount,
-                MeshBoundsRadius = meshEntry.BoundsRadius,
-                ScreenWidth = _swapchainManager.SwapchainExtent.Width,
-                ScreenHeight = _swapchainManager.SwapchainExtent.Height,
-                DebugMeshlets = 0,
-                LightCount = LightManager?.LightCount ?? 0,
-                LightBufferIndex = LightManager?.LightBufferBindlessIndex ?? 0,
-                TiledLightHeaderBufferIndex = _tiledLightCullingPass?.TiledLightHeaderBufferIndex ?? 0,
-                TiledLightIndicesBufferIndex = _tiledLightCullingPass?.TiledLightIndicesBufferIndex ?? 0,
-                Padding = 0
-            };
-
-            _vk.CmdPushConstants(commandBuffer, _meshPipeline.PipelineLayout,
-                ShaderStageFlags.MeshBitExt | ShaderStageFlags.FragmentBit | ShaderStageFlags.TaskBitExt,
-                0, (uint)sizeof(Data.RenderingData.PushConstants), &pushConstants);
-
-            if (meshEntry.MeshletCount > 0) _extMeshShader!.CmdDrawMeshTask(commandBuffer, 1, 1, 1);
-        }
-
-        // End dynamic rendering
-        _vk.CmdEndRendering(commandBuffer);
-
-        // Transition: COLOR_ATTACHMENT_OPTIMAL -> PRESENT_SRC_KHR
-        TransitionImageLayout(commandBuffer, swapchainImage,
-            ImageLayout.ColorAttachmentOptimal, ImageLayout.PresentSrcKhr);
-        _swapchainImageLayouts![imageIndex] = ImageLayout.PresentSrcKhr;
-    }
-
-
+    
     private void SubmitTransferCommandBuffer(CommandBuffer transferCmd, Semaphore transferFinishedSemaphore)
     {
         var vk = _vulkanContext.VulkanApi;
@@ -1287,6 +1120,10 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
 
         var meshes    = model.Meshes.ToList();
         var materials = model.Materials.ToList();
+        var renderObjectNames = new List<string>();
+
+        // Use the model's root node transform, falling back to identity if not available
+        var modelTransform = (model as NjulfFramework.Assets.Models.FrameworkModel)?.RootNode?.Transform ?? Matrix4x4.Identity;
 
         for (int i = 0; i < meshes.Count; i++)
         {
@@ -1323,11 +1160,37 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
                 rdMat.EmissiveFactor    = iMat.EmissiveFactor;
             }
 
+            var renderObjName = $"model_{model.Name}_{i}_{iMesh.Name}";
             AddRenderObject(new Data.RenderingData.RenderObject(
-                $"model_{model.Name}_{i}_{iMesh.Name}", rdMesh, rdMat, Matrix4x4.Identity));
+                renderObjName, rdMesh, rdMat, modelTransform));
+            renderObjectNames.Add(renderObjName);
         }
+
+        // Track which render objects belong to this model
+        _modelToRenderObjectNames[model.Name] = renderObjectNames;
 
         FinalizeAndUpdateMeshBuffers();
         Console.WriteLine($"✓ Model '{model.Name}' loaded: {meshes.Count} mesh(es) added to scene");
+    }
+
+    public void UpdateModelTransform(IModel model, Matrix4x4 transform)
+    {
+        if (model == null) throw new ArgumentNullException(nameof(model));
+
+        if (_modelToRenderObjectNames.TryGetValue(model.Name, out var renderObjectNames))
+        {
+            foreach (var objName in renderObjectNames)
+            {
+                if (_renderObjects.TryGetValue(objName, out var renderObj))
+                {
+                    renderObj.Transform = transform;
+                }
+            }
+            // Also update the model's own transform if it's a FrameworkModel
+            if (model is NjulfFramework.Assets.Models.FrameworkModel frameworkModel && frameworkModel.RootNode != null)
+            {
+                frameworkModel.RootNode.Transform = transform;
+            }
+        }
     }
 }

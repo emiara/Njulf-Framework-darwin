@@ -1,7 +1,9 @@
 //SPDX-License-Identifier: MPL-2.0
 
 using System.Numerics;
+using NjulfFramework.Core.Interfaces.Rendering;
 using NjulfFramework.Rendering.Data;
+using NjulfFramework.Rendering.Core;
 using NjulfFramework.Rendering.Memory;
 using NjulfFramework.Rendering.Resources.Descriptors;
 using NjulfFramework.Rendering.Resources.Handles;
@@ -15,7 +17,7 @@ namespace NjulfFramework.Rendering.Resources;
 ///     Manages dynamic lights for forward+ rendering.
 ///     Handles CPU-side light data and GPU uploads.
 /// </summary>
-public class LightManager : IDisposable
+public class LightManager : ILightManager, IDisposable
 {
     private const ulong MaxLightCount = 1024;
     private const ulong LightBufferSize = MaxLightCount * 48; // 48 bytes per light
@@ -53,14 +55,14 @@ public class LightManager : IDisposable
 
         _lightBufferVk = _bufferManager.GetBuffer(_lightBuffer);
 
-        // Register with bindless heap (two-step pattern)
-        if (!bindlessHeap.TryAllocateBufferIndex(out var lightBufferIndex))
-            throw new Exception("Failed to allocate bindless index for light buffer");
-
+        // Register with bindless heap at index 3 (after scene buffers 0,1,2)
+        // Scene buffers: 0=object, 1=material, 2=mesh
+        // Light buffer must be at a known index that matches shader expectations
+        const uint lightBufferIndex = 3;
         LightBufferBindlessIndex = lightBufferIndex;
-        bindlessHeap.UpdateBuffer(LightBufferBindlessIndex, _lightBufferVk, LightBufferSize);
+        bindlessHeap.UpdateBuffer(lightBufferIndex, _lightBufferVk, LightBufferSize);
 
-        Console.WriteLine($"✓ Light manager initialized (max {MaxLightCount} lights)");
+        Console.WriteLine($"✓ Light manager initialized (max {MaxLightCount} lights, buffer index {lightBufferIndex})");
     }
 
     public uint LightBufferBindlessIndex { get; }

@@ -52,11 +52,29 @@ public class InputAction
     }
 
     /// <summary>
-    ///     Adds a mouse binding to this action.
+    ///     Adds a mouse button binding to this action.
     /// </summary>
     public InputAction AddMouseBinding(int button, float scale = 1.0f)
     {
         Bindings.Add(InputBinding.ForMouse(button, scale));
+        return this;
+    }
+
+    /// <summary>
+    ///     Adds a mouse X axis binding to this action.
+    /// </summary>
+    public InputAction AddMouseXBinding(float scale = 1.0f)
+    {
+        Bindings.Add(InputBinding.ForMouseXAxis(scale));
+        return this;
+    }
+
+    /// <summary>
+    ///     Adds a mouse Y axis binding to this action.
+    /// </summary>
+    public InputAction AddMouseYBinding(float scale = 1.0f)
+    {
+        Bindings.Add(InputBinding.ForMouseYAxis(scale));
         return this;
     }
 }

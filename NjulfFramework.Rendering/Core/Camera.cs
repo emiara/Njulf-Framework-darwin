@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Numerics;
+using NjulfFramework.Core.Interfaces.Rendering;
 
 namespace NjulfFramework.Rendering.Core
 {
@@ -8,7 +9,7 @@ namespace NjulfFramework.Rendering.Core
     /// A minimalist, high-performance camera system for the rendering pipeline.
     /// Features immutable-by-default properties, lazy matrix evaluation, and thread-safe reads.
     /// </summary>
-    public sealed class Camera
+    public sealed class Camera : ICamera
     {
         // Fixed planes (immutable)
         private const float NearPlane = 0.1f;
@@ -111,6 +112,17 @@ namespace NjulfFramework.Rendering.Core
         /// <summary>Gets the fixed far plane distance (1000.0f).</summary>
         public float GetFarPlane() => FarPlane;
 
+        // --- Direction Vectors ---
+
+        /// <summary>Gets the forward direction vector (cached and derived from rotation).</summary>
+        public Vector3 GetForward() => -Vector3.Transform(Vector3.UnitZ, _rotation);
+
+        /// <summary>Gets the right direction vector (cached and derived from rotation).</summary>
+        public Vector3 GetRight() => Vector3.Transform(Vector3.UnitX, _rotation);
+
+        /// <summary>Gets the up direction vector (cached and derived from rotation).</summary>
+        public Vector3 GetUp() => Vector3.Transform(Vector3.UnitY, _rotation);
+
         // --- Matrices ---
 
         /// <summary>
@@ -120,8 +132,8 @@ namespace NjulfFramework.Rendering.Core
         {
             if (_isViewDirty)
             {
-                Vector3 forward = Vector3.Transform(Vector3.UnitZ, _rotation);
-                Vector3 up = Vector3.Transform(Vector3.UnitY, _rotation);
+                Vector3 forward = GetForward();
+                Vector3 up = GetUp();
                 _cachedView = Matrix4x4.CreateLookAt(_position, _position + forward, up);
                 _isViewDirty = false;
             }

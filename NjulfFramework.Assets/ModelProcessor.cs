@@ -26,21 +26,25 @@ public class ModelProcessor
     /// <summary>
     ///     Process an Assimp scene into a framework model
     /// </summary>
-    public unsafe FrameworkModel ProcessScene(Scene* scene, string basePath)
+    public unsafe FrameworkModel ProcessScene(Scene* scene, string filePath)
     {
         if (scene == null)
             throw new ArgumentNullException(nameof(scene));
 
         var frameworkModel = new FrameworkModel
         {
-            Name = Path.GetFileNameWithoutExtension(basePath)
+            Name = Path.GetFileNameWithoutExtension(filePath)
         };
+
+        // Determine if we need to flip winding for glTF standard compliance
+        // glTF 2.0 spec uses CCW winding, but some exporters produce CW
+        var isGltf = filePath.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase);
 
         // Convert materials
         for (var i = 0; i < scene->MNumMaterials; i++)
         {
             var assimpMaterial = scene->MMaterials[i];
-            var frameworkMaterial = _materialConverter.ConvertMaterial(assimpMaterial, basePath);
+            var frameworkMaterial = _materialConverter.ConvertMaterial(assimpMaterial, filePath);
             frameworkModel.Materials.Add(frameworkMaterial);
         }
 
@@ -48,7 +52,7 @@ public class ModelProcessor
         for (var i = 0; i < scene->MNumMeshes; i++)
         {
             var assimpMesh = scene->MMeshes[i];
-            var frameworkMesh = _meshConverter.ConvertMesh(assimpMesh, i);
+            var frameworkMesh = _meshConverter.ConvertMesh(assimpMesh, i, isGltf);
             frameworkModel.Meshes.Add(frameworkMesh);
         }
 

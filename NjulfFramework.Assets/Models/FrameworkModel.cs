@@ -25,6 +25,25 @@ public class FrameworkModel : IModel
     public SceneNode RootNode { get; set; }
 
     /// <summary>
+    ///     Sets the position of the model by updating the root node's transform.
+    ///     This replaces the translation component of the transform while preserving rotation and scale.
+    /// </summary>
+    public void SetPosition(Vector3 position)
+    {
+        if (RootNode == null)
+            RootNode = new SceneNode();
+        RootNode.Transform = Matrix4x4.CreateTranslation(position);
+    }
+
+    /// <summary>
+    ///     Gets the current position from the root node's transform.
+    /// </summary>
+    public Vector3 GetPosition()
+    {
+        return RootNode?.Transform.Translation ?? Vector3.Zero;
+    }
+
+    /// <summary>
     ///     Scene hierarchy node
     /// </summary>
     public class SceneNode

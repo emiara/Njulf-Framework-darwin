@@ -1,6 +1,7 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Silk.NET.Vulkan;
 
 namespace NjulfFramework.Rendering.Pipeline;
@@ -150,7 +151,7 @@ public class DynamicRasterPass : RenderGraphPass
     ///     Draw a single render object from RenderingData module.
     ///     Implement bindless indexing and push constants here.
     /// </summary>
-    private void DrawObject(CommandBuffer cmd, RenderGraphContext ctx, Data.RenderingData.RenderObject obj)
+    private unsafe void DrawObject(CommandBuffer cmd, RenderGraphContext ctx, Data.RenderingData.RenderObject obj)
     {
         // This is a placeholder implementation.
         // In a full implementation, this would:
@@ -158,8 +159,38 @@ public class DynamicRasterPass : RenderGraphPass
         // - Push object-specific data via push constants
         // - Issue draw calls with vertex/index buffers from obj.Mesh
 
-        if (obj?.Mesh == null)
+        if (obj?.Mesh == null || obj.Material == null)
             return;
+
+        // Get material index from scene data builder
+        var materialIndex = ctx.SceneDataBuilder?.GetMaterialIndex(obj.Material) ?? 0;
+
+        var pushConstants = new Data.RenderingData.PushConstants
+        {
+            Model = obj.Transform,
+            View = ctx.View,
+            Projection = ctx.Projection,
+            MaterialIndex = materialIndex,
+            VertexOffset = 0, // Will be set by mesh manager
+            IndexOffset = 0,
+            IndexCount = (uint)obj.Mesh.Indices.Length,
+            VertexCount = (uint)obj.Mesh.Vertices.Length,
+            MeshletOffset = 0,
+            MeshletCount = 0,
+            MeshBoundsRadius = 0,
+            ScreenWidth = ctx.Width,
+            ScreenHeight = ctx.Height,
+            DebugMeshlets = 0,
+            LightCount = ctx.LightCount,
+            LightBufferIndex = ctx.LightBufferIndex,
+            TiledLightHeaderBufferIndex = ctx.TiledLightHeaderBufferIndex,
+            TiledLightIndicesBufferIndex = ctx.TiledLightIndicesBufferIndex,
+            Padding = 0
+        };
+
+        _vk.CmdPushConstants(cmd, _pipeline.PipelineLayout,
+            ShaderStageFlags.VertexBit | ShaderStageFlags.FragmentBit,
+            0, (uint)Marshal.SizeOf<Data.RenderingData.PushConstants>(), &pushConstants);
 
         ctx.MeshManager?.DrawMesh(cmd, obj.Mesh);
     }

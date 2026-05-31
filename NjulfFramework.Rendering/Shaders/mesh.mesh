@@ -101,28 +101,31 @@ void main()
     GPUMeshlet meshlet = meshletBuffer.data[meshletIndex];
     uint primCount = meshlet.triangleCount;
 
-    vec3 center = (meshlet.boundsMin.xyz + meshlet.boundsMax.xyz) * 0.5;
-    vec3 extent = (meshlet.boundsMax.xyz - meshlet.boundsMin.xyz) * 0.5;
-    float baseRadius = length(extent);
-    float scale = max(length(pc.model[0].xyz), max(length(pc.model[1].xyz), length(pc.model[2].xyz)));
-    float radius = baseRadius * scale;
-
-    vec4 worldCenter = pc.model * vec4(center, 1.0);
-    vec4 clip = pc.projection * pc.view * worldCenter;
-    bool culled = (clip.x < -clip.w - radius || clip.x > clip.w + radius ||
-                   clip.y < -clip.w - radius || clip.y > clip.w + radius ||
-                   clip.z < -clip.w - radius || clip.z > clip.w + radius);
-
-    vec3 axisWorld = normalize(mat3(pc.model) * meshlet.coneAxis.xyz);
-    vec3 axisView = normalize(mat3(pc.view) * axisWorld);
-    vec3 viewPos = (pc.view * worldCenter).xyz;
-    vec3 viewDir = normalize(-viewPos);
-    float coneCutoff = meshlet.coneData.x;
-    if (coneCutoff > -0.5)
-    {
-        if (dot(viewDir, axisView) < coneCutoff)
-            culled = true;
-    }
+    // Temporarily disabled frustum/cone culling to debug missing triangles
+    // vec3 center = (meshlet.boundsMin.xyz + meshlet.boundsMax.xyz) * 0.5;
+    // vec3 extent = (meshlet.boundsMax.xyz - meshlet.boundsMin.xyz) * 0.5;
+    // float baseRadius = length(extent);
+    // float scale = max(length(pc.model[0].xyz), max(length(pc.model[1].xyz), length(pc.model[2].xyz)));
+    // float radius = baseRadius * scale;
+    //
+    // vec4 worldCenter = pc.model * vec4(center, 1.0);
+    // vec4 clip = pc.projection * pc.view * worldCenter;
+    // bool culled = (clip.x < -clip.w - radius || clip.x > clip.w + radius ||
+    //                clip.y < -clip.w - radius || clip.y > clip.w + radius ||
+    //                clip.z < -clip.w - radius || clip.z > clip.w + radius);
+    //
+    // vec3 axisWorld = normalize(mat3(pc.model) * meshlet.coneAxis.xyz);
+    // vec3 axisView = normalize(mat3(pc.view) * axisWorld);
+    // vec3 viewPos = (pc.view * worldCenter).xyz;
+    // vec3 viewDir = normalize(-viewPos);
+    // float coneCutoff = meshlet.coneData.x;
+    // if (coneCutoff > -0.5)
+    // {
+    //     if (dot(viewDir, axisView) < coneCutoff)
+    //         culled = true;
+    // }
+    
+    bool culled = false;
     if (gl_LocalInvocationIndex == 0)
     {
         if (culled)

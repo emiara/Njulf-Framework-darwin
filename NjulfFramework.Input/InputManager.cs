@@ -67,7 +67,7 @@ public class InputManager : IInputManager
 
     public bool WasActionTriggered(string actionName)
     {
-        // Check if the action was triggered
+        if (_actions.TryGetValue(actionName, out var action)) return action.WasTriggered;
         return false;
     }
 
@@ -120,7 +120,18 @@ public class InputManager : IInputManager
             }
             else if (binding.Device == InputDeviceType.Mouse && Mouse != null)
             {
-                if (Mouse.IsButtonPressed(binding.Button)) inputValue = 1f;
+                switch (binding.BindingType)
+                {
+                    case InputBindingType.MouseButton:
+                        if (Mouse.IsButtonPressed(binding.Button)) inputValue = 1f;
+                        break;
+                    case InputBindingType.MouseXAxis:
+                        inputValue = Mouse.DeltaX;
+                        break;
+                    case InputBindingType.MouseYAxis:
+                        inputValue = Mouse.DeltaY;
+                        break;
+                }
             }
 
             totalValue += inputValue * binding.Scale;

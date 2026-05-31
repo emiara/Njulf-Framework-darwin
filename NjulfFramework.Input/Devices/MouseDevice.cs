@@ -13,6 +13,7 @@ public class MouseDevice : IMouseDevice
     private readonly IMouse _mouse;
     private readonly Dictionary<int, bool> _previousButtonStates = new();
     private Vector2D<float> _position;
+    private Vector2D<float> _previousPosition;
     private float _previousWheel;
 
     /// <summary>
@@ -21,6 +22,8 @@ public class MouseDevice : IMouseDevice
     public MouseDevice(IMouse mouse)
     {
         _mouse = mouse;
+        _position = new Vector2D<float>(mouse.Position.X, mouse.Position.Y);
+        _previousPosition = _position;
     }
 
     /// <summary>
@@ -42,6 +45,16 @@ public class MouseDevice : IMouseDevice
     ///     Gets the current wheel value.
     /// </summary>
     public float Wheel { get; private set; }
+
+    /// <summary>
+    ///     Gets the X delta of the mouse position since last frame.
+    /// </summary>
+    public float DeltaX => _position.X - _previousPosition.X;
+
+    /// <summary>
+    ///     Gets the Y delta of the mouse position since last frame.
+    /// </summary>
+    public float DeltaY => _position.Y - _previousPosition.Y;
 
     /// <summary>
     ///     Gets whether a mouse button is currently pressed.
@@ -79,6 +92,9 @@ public class MouseDevice : IMouseDevice
         // Save current button states as previous
         _previousButtonStates.Clear();
         foreach (var kvp in _buttonStates) _previousButtonStates[kvp.Key] = kvp.Value;
+
+        // Save current position as previous before updating
+        _previousPosition = _position;
 
         // Get current state
         _position = new Vector2D<float>(_mouse.Position.X, _mouse.Position.Y);

@@ -5,6 +5,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using NjulfFramework.Core.Interfaces.Assets;
 using NjulfFramework.Core.Interfaces.Rendering;
+using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.Windowing;
 
@@ -23,7 +24,8 @@ public abstract class GameFramework
 
     protected IWindow? Window { get; private set; }
     protected IRenderer? Renderer { get; private set; }
-    protected IContentManager? Content { get; private set; }   // ← replaces raw AssetLoader
+    protected IContentManager? Content { get; private set; }
+    protected ICamera? Camera { get; private set; }
     protected float DeltaTime { get; private set; }
 
     /// <summary>
@@ -96,7 +98,25 @@ public abstract class GameFramework
         try
         {
             Renderer = _serviceProvider!.GetService<IRenderer>();
-            Content  = _serviceProvider!.GetService<IContentManager>();   // ← resolve ContentManager
+            Content  = _serviceProvider!.GetService<IContentManager>();
+            Camera   = _serviceProvider!.GetService<ICamera>();
+
+            // Initialize input manager with actual Silk.NET devices
+            var inputManager = _serviceProvider!.GetService<NjulfFramework.Input.Interfaces.IInputManager>();
+            if (inputManager is NjulfFramework.Input.InputManager concreteInputManager && Window != null)
+            {
+                var inputContext = Window.CreateInput();
+                var keyboard = inputContext.Keyboards.FirstOrDefault();
+                var mouse = inputContext.Mice.FirstOrDefault();
+                if (keyboard != null && mouse != null)
+                    concreteInputManager.Initialize(keyboard, mouse);
+            }
+
+            // Update camera aspect ratio to match window
+            if (Camera != null && Window != null)
+            {
+                Camera.SetAspectRatio(Window.Size.X / (float)Window.Size.Y);
+            }
 
             Renderer?.Load();
 
