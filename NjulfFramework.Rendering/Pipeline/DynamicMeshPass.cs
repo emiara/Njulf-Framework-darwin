@@ -85,11 +85,10 @@ public class DynamicMeshPass : RenderGraphPass
             var descriptorSets = stackalloc DescriptorSet[]
             {
                 ctx.BindlessHeap.BufferSet,
-                ctx.BindlessHeap.TextureSet,
-                ctx.MeshBuffersSet
+                ctx.BindlessHeap.TextureSet
             };
             _vk.CmdBindDescriptorSets(cmd, PipelineBindPoint.Graphics, _pipeline.PipelineLayout,
-                0, 3, descriptorSets, 0, null);
+                0, 2, descriptorSets, 0, null);
 
             var viewport = new Viewport
             {
@@ -150,7 +149,8 @@ public class DynamicMeshPass : RenderGraphPass
                 if (meshEntry.MeshletCount == 0)
                     continue;
 
-                _meshShader.CmdDrawMeshTask(cmd, meshEntry.MeshletCount, 1, 1);
+                // One task workgroup; the task shader emits meshletCount mesh workgroups.
+                _meshShader.CmdDrawMeshTask(cmd, 1, 1, 1);
             }
         }
         finally

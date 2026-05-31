@@ -288,12 +288,13 @@ public class RenderingData
         public uint LightBufferIndex; // 4 bytes
         public uint TiledLightHeaderBufferIndex; // 4 bytes
         public uint TiledLightIndicesBufferIndex; // 4 bytes
-        public uint Padding; // 4 bytes (align to 16)
+        public uint Padding; // 4 bytes (total: 192 + 15*4 + 4 = 256 bytes)
 
         /// <summary>
         /// Returns the size of the PushConstants struct in bytes.
         /// Industry standard: Use Marshal.SizeOf to avoid hardcoding and ensure
         /// the size always matches the actual struct layout.
+        /// Must be <= 256 bytes for most Vulkan devices.
         /// </summary>
         public static uint SizeInBytes => (uint)Marshal.SizeOf<PushConstants>();
     }

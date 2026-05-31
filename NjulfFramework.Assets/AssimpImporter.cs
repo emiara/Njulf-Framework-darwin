@@ -54,10 +54,9 @@ public class AssimpImporter : IDisposable
                 // For glTF files, we might want different processing
                 if (filePath.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase))
                 {
-                    // glTF files are typically already triangulated, but ensure it
-                    flags = (uint)(PostProcessSteps.Triangulate |
-                                 PostProcessSteps.GenerateSmoothNormals |
-                                 PostProcessSteps.CalculateTangentSpace);
+                    // glTF files are already triangulated by spec
+                    flags = (uint)(PostProcessSteps.GenerateSmoothNormals |
+                                   PostProcessSteps.CalculateTangentSpace);
                 }
 
                 var scene = _assimp.ImportFile(filePath, flags);

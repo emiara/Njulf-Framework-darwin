@@ -83,9 +83,29 @@ public class RenderGraphContext(uint width, uint height, BindlessDescriptorHeap 
     public Data.SceneDataBuilder? SceneDataBuilder { get; set; }
 
     /// <summary>
-    ///     Descriptor set for mesh vertex/index buffers.
+    ///     Bindless buffer index for vertex buffer (mesh shading).
     /// </summary>
-    public DescriptorSet MeshBuffersSet { get; set; }
+    public uint VertexBufferIndex { get; set; } = 3;
+
+    /// <summary>
+    ///     Bindless buffer index for index buffer (mesh shading).
+    /// </summary>
+    public uint IndexBufferIndex { get; set; } = 4;
+
+    /// <summary>
+    ///     Bindless buffer index for meshlet buffer (mesh shading).
+    /// </summary>
+    public uint MeshletBufferIndex { get; set; } = 5;
+
+    /// <summary>
+    ///     Bindless buffer index for meshlet vertex indices (mesh shading).
+    /// </summary>
+    public uint MeshletVertexIndexBufferIndex { get; set; } = 6;
+
+    /// <summary>
+    ///     Bindless buffer index for meshlet triangle indices (mesh shading).
+    /// </summary>
+    public uint MeshletTriangleIndexBufferIndex { get; set; } = 7;
 
     /// <summary>
     ///     Total light count for this frame.

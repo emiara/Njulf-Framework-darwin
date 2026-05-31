@@ -16,13 +16,14 @@ public class MeshPipeline : IDisposable
     public unsafe MeshPipeline(
         Vk vk,
         Device device,
-        Extent2D swapchainExtent,
         DescriptorSetLayout[] descriptorSetLayouts,
         Format colorFormat = Format.B8G8R8A8Unorm,
         Format depthFormat = Format.D32Sfloat,
         string meshShaderPath = "Shaders/mesh.mesh",
         string fragShaderPath = "Shaders/forward_plus.frag",
-        string? taskShaderPath = "Shaders/mesh.task")
+        string? taskShaderPath = "Shaders/mesh.task",
+        SampleCountFlags sampleCount = SampleCountFlags.Count1Bit,
+        bool enableBlending = false)
     {
         _vk = vk;
         _device = device;
@@ -32,13 +33,18 @@ public class MeshPipeline : IDisposable
         var meshSpirv = ShaderCompiler.CompileGlslToSpirv(meshShaderPath, ShaderStage.Mesh);
         var fragSpirv = ShaderCompiler.CompileGlslToSpirv(fragShaderPath, ShaderStage.Fragment);
         byte[]? taskSpirv = null;
-        if (!string.IsNullOrWhiteSpace(taskShaderPath))
+        if (!string.IsNullOrWhiteSpace(taskShaderPath) && File.Exists(taskShaderPath))
             taskSpirv = ShaderCompiler.CompileGlslToSpirv(taskShaderPath, ShaderStage.Task);
 
         ShaderModule taskShaderModule = default;
         var meshShaderModule = CreateShaderModule(meshSpirv);
         var fragShaderModule = CreateShaderModule(fragSpirv);
         if (taskSpirv != null) taskShaderModule = CreateShaderModule(taskSpirv);
+
+        // Allocate entry point strings - must free these after pipeline creation
+        IntPtr meshEntryPoint = Marshal.StringToHGlobalAnsi("main");
+        IntPtr fragEntryPoint = Marshal.StringToHGlobalAnsi("main");
+        IntPtr taskEntryPoint = IntPtr.Zero;
 
         try
         {
@@ -47,7 +53,7 @@ public class MeshPipeline : IDisposable
                 SType = StructureType.PipelineShaderStageCreateInfo,
                 Stage = ShaderStageFlags.MeshBitExt,
                 Module = meshShaderModule,
-                PName = (byte*)Marshal.StringToHGlobalAnsi("main")
+                PName = (byte*)meshEntryPoint
             };
 
             var fragStageInfo = new PipelineShaderStageCreateInfo
@@ -55,19 +61,20 @@ public class MeshPipeline : IDisposable
                 SType = StructureType.PipelineShaderStageCreateInfo,
                 Stage = ShaderStageFlags.FragmentBit,
                 Module = fragShaderModule,
-                PName = (byte*)Marshal.StringToHGlobalAnsi("main")
+                PName = (byte*)fragEntryPoint
             };
 
             PipelineShaderStageCreateInfo taskStageInfo = default;
             var stageCount = 2;
             if (taskSpirv != null)
             {
+                taskEntryPoint = Marshal.StringToHGlobalAnsi("main");
                 taskStageInfo = new PipelineShaderStageCreateInfo
                 {
                     SType = StructureType.PipelineShaderStageCreateInfo,
                     Stage = ShaderStageFlags.TaskBitExt,
                     Module = taskShaderModule,
-                    PName = (byte*)Marshal.StringToHGlobalAnsi("main")
+                    PName = (byte*)taskEntryPoint
                 };
                 stageCount = 3;
             }
@@ -111,14 +118,20 @@ public class MeshPipeline : IDisposable
             {
                 SType = StructureType.PipelineMultisampleStateCreateInfo,
                 SampleShadingEnable = false,
-                RasterizationSamples = SampleCountFlags.Count1Bit
+                RasterizationSamples = sampleCount
             };
 
             var colorBlendAttachment = new PipelineColorBlendAttachmentState
             {
                 ColorWriteMask = ColorComponentFlags.RBit | ColorComponentFlags.GBit |
                                  ColorComponentFlags.BBit | ColorComponentFlags.ABit,
-                BlendEnable = false
+                BlendEnable = enableBlending,
+                SrcColorBlendFactor = BlendFactor.SrcAlpha,
+                DstColorBlendFactor = BlendFactor.OneMinusSrcAlpha,
+                ColorBlendOp = BlendOp.Add,
+                SrcAlphaBlendFactor = BlendFactor.One,
+                DstAlphaBlendFactor = BlendFactor.Zero,
+                AlphaBlendOp = BlendOp.Add
             };
 
             var colorBlending = new PipelineColorBlendStateCreateInfo
@@ -205,6 +218,14 @@ public class MeshPipeline : IDisposable
         }
         finally
         {
+            // Free unmanaged entry point strings
+            if (meshEntryPoint != IntPtr.Zero)
+                Marshal.FreeHGlobal(meshEntryPoint);
+            if (fragEntryPoint != IntPtr.Zero)
+                Marshal.FreeHGlobal(fragEntryPoint);
+            if (taskEntryPoint != IntPtr.Zero)
+                Marshal.FreeHGlobal(taskEntryPoint);
+
             if (meshShaderModule.Handle != 0)
                 _vk.DestroyShaderModule(_device, meshShaderModule, null);
             if (fragShaderModule.Handle != 0)

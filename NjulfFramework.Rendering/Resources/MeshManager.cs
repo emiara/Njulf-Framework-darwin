@@ -116,6 +116,23 @@ public class MeshManager : IMeshManager
     }
 
     /// <summary>
+    /// Old buffer handles from previous finalization (for deferred deletion).
+    /// </summary>
+    public (BufferHandle? Vertex, BufferHandle? Index, BufferHandle? Meshlet,
+            BufferHandle? MeshletVertexIndices, BufferHandle? MeshletTriangleIndices) OldBufferHandles
+        => _meshBuffer.OldBufferHandles;
+
+    /// <summary>
+    /// Whether the mesh manager has been finalized.
+    /// </summary>
+    public bool IsFinalized => _meshBuffer.IsFinalized;
+
+    /// <summary>
+    /// Clear old buffer handles after they've been consumed for deferred deletion.
+    /// </summary>
+    public void ClearOldBufferHandles() => _meshBuffer.ClearOldBufferHandles();
+
+    /// <summary>
     /// Reset the finalization state and perform dynamic finalization.
     /// Allows adding new meshes after initial finalization.
     /// </summary>
@@ -202,6 +219,18 @@ public class MeshManager : IMeshManager
     public (BufferHandle VertexHandle, BufferHandle IndexHandle) GetMeshBufferHandles()
     {
         return (_meshBuffer.VertexBufferHandle, _meshBuffer.IndexBufferHandle);
+    }
+
+    /// <summary>
+    ///     Get all mesh buffer handles for bindless registration.
+    /// </summary>
+    public (BufferHandle VertexHandle, BufferHandle IndexHandle, BufferHandle MeshletHandle,
+            BufferHandle MeshletVertexIndicesHandle, BufferHandle MeshletTriangleIndicesHandle)
+        GetAllMeshBufferHandles()
+    {
+        return (_meshBuffer.VertexBufferHandle, _meshBuffer.IndexBufferHandle,
+                _meshBuffer.MeshletBufferHandle, _meshBuffer.MeshletVertexIndicesBufferHandle,
+                _meshBuffer.MeshletTriangleIndicesBufferHandle);
     }
 
     /// <summary>

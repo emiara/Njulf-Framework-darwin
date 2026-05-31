@@ -35,6 +35,9 @@ public class MeshBuffer : IDisposable
     private bool _finalized;
     private Buffer _indexBuffer;
 
+    /// <summary> Whether the mesh buffer has been finalized. </summary>
+    public bool IsFinalized => _finalized;
+
     private bool _meshletDataUploaded;
     private Buffer _vertexBuffer;
 
@@ -132,6 +135,20 @@ public class MeshBuffer : IDisposable
     }
 
     /// <summary>
+    ///     Old buffer handles from previous finalization (for deferred deletion).
+    /// </summary>
+    public (BufferHandle? Vertex, BufferHandle? Index, BufferHandle? Meshlet,
+            BufferHandle? MeshletVertexIndices, BufferHandle? MeshletTriangleIndices) OldBufferHandles { get; private set; }
+
+    /// <summary>
+    /// Clear old buffer handles after they've been consumed for deferred deletion.
+    /// </summary>
+    public void ClearOldBufferHandles()
+    {
+        OldBufferHandles = (null, null, null, null, null);
+    }
+
+    /// <summary>
     ///     Finalize the mesh buffer: allocate GPU memory and prepare for uploads.
     ///     Called once after all meshes are registered.
     /// </summary>
@@ -142,19 +159,9 @@ public class MeshBuffer : IDisposable
 
         if (_finalized)
         {
-            // Re-finalization: Clean up existing buffers first
-            Console.WriteLine("Re-finalizing MeshBuffer...");
-
-            if (VertexBufferHandle.IsValid)
-                _bufferManager.FreeBuffer(VertexBufferHandle);
-            if (IndexBufferHandle.IsValid)
-                _bufferManager.FreeBuffer(IndexBufferHandle);
-            if (MeshletBufferHandle.IsValid)
-                _bufferManager.FreeBuffer(MeshletBufferHandle);
-            if (MeshletVertexIndicesBufferHandle.IsValid)
-                _bufferManager.FreeBuffer(MeshletVertexIndicesBufferHandle);
-            if (MeshletTriangleIndicesBufferHandle.IsValid)
-                _bufferManager.FreeBuffer(MeshletTriangleIndicesBufferHandle);
+            // Re-finalization: Save old handles for deferred deletion
+            OldBufferHandles = (VertexBufferHandle, IndexBufferHandle, MeshletBufferHandle,
+                               MeshletVertexIndicesBufferHandle, MeshletTriangleIndicesBufferHandle);
 
             // Reset meshlet data
             _meshlets.Clear();
@@ -340,6 +347,8 @@ public class MeshBuffer : IDisposable
 
         Console.WriteLine($"✓ Uploaded mesh '{mesh.Name}' to GPU buffers");
     }
+
+
 
     /// <summary>
     ///     Helper: Record a buffer copy command.

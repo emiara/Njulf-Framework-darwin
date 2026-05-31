@@ -1,0 +1,3 @@
+Split LoadModelIntoScene into a CPU-only BuildCpuPayload (callable from any thread) and a render-thread IntegratePayload drained from a ConcurrentQueue at the top of Draw().
+Replace the DeviceWaitIdle in FinalizeAndUpdateMeshBuffers with a deletion queue keyed off _currentFrameIndex + MaxFramesInFlight, flushed each frame.
+Move mesh/index/meshlet buffers into the bindless heap with update-after-bind, so you never recreate-and-rebind _meshBuffersDescriptorSet at runtime (or, interim: double-buffer the descriptor set — one per frame-in-flight — and only update the copy not currently in flight).

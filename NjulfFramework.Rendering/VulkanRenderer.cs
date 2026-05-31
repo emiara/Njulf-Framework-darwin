@@ -1,5 +1,6 @@
 ﻿// SPDX-License-Identifier: MPL-2.0
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -11,6 +12,8 @@ using NjulfFramework.Rendering.Memory;
 using NjulfFramework.Rendering.Pipeline;
 using NjulfFramework.Rendering.Resources;
 using NjulfFramework.Rendering.Resources.Descriptors;
+using NjulfFramework.Rendering.Resources.Handles;
+using Silk.NET.Core.Native;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.EXT;
 using Silk.NET.Vulkan.Extensions.KHR;
@@ -34,6 +37,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     // Phase 2: Scene objects
     private readonly Dictionary<string, Data.RenderingData.RenderObject> _renderObjects = new();
     private readonly Dictionary<string, List<string>> _modelToRenderObjectNames = new();
+    private readonly ConcurrentQueue<ScenePayload> _scenePayloadQueue = new();
+    private readonly Dictionary<uint, List<Action>> _deletionQueue = new();
 
     private SceneDataBuilder? _sceneBuilder;
 
@@ -53,23 +58,23 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
 
     private DescriptorSetLayouts? _descriptorSetLayouts;
     private ExtMeshShader? _extMeshShader;
-    private FramebufferManager? _framebufferManager;
 
     private uint _frameIndex;
-    private GraphicsPipeline? _graphicsPipeline;
     private KhrSurface? _khrSurface;
 
     private KhrSwapchain? _khrSwapchain;
 
 
-    // Phase 3.5: Forward+ lighting
-    private DescriptorPool _meshBuffersDescriptorPool;
-    private DescriptorSet _meshBuffersDescriptorSet;
+    // Phase 3.5: Mesh buffer bindless indices (indices 3-7 in buffer heap)
+    private uint _vertexBufferBindlessIndex = 3;
+    private uint _indexBufferBindlessIndex = 4;
+    private uint _meshletBufferBindlessIndex = 5;
+    private uint _meshletVertexIndexBufferBindlessIndex = 6;
+    private uint _meshletTriangleIndexBufferBindlessIndex = 7;
     private MeshManager? _meshManager;
     private MeshPipeline? _meshPipeline;
 
     private RenderGraph? _renderGraph;
-    private RenderPassManager? _renderPassManager;
     private Buffer _sceneMaterialBuffer;
     private Buffer _sceneMeshBuffer;
 
@@ -87,7 +92,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         _window = window ?? throw new ArgumentNullException(nameof(window));
         _camera = camera ?? throw new ArgumentNullException(nameof(camera));
 
-        _vulkanContext = new VulkanContext();
+        _vulkanContext = new VulkanContext(enableValidationLayers: true);
         _bufferManager = new BufferManager(_vulkanContext.VulkanApi, _vulkanContext.VmaAllocator);
         _frameUploadRing = new FrameUploadRing(_bufferManager);
     }
@@ -98,9 +103,87 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     
     public ILightManager? LightManager => _lightManagerImpl;
 
+    /// <summary>
+    /// Sets a debug name for a Vulkan object using VK_EXT_debug_utils.
+    /// </summary>
+    private unsafe void SetDebugName<T>(T handle, ObjectType objectType, string name) where T : unmanaged
+    {
+        // Try to get debug utils extension
+        if (!_vulkanContext!.VulkanApi.TryGetInstanceExtension(_vulkanContext.Instance, out ExtDebugUtils debugUtils))
+            return; // Debug utils not available
+
+        ulong handleValue = 0;
+        if (handle is Image img) handleValue = img.Handle;
+        else if (handle is ImageView iv) handleValue = iv.Handle;
+        else if (handle is Sampler s) handleValue = s.Handle;
+        else if (handle is SurfaceKHR surf) handleValue = surf.Handle;
+        else if (handle is Buffer buf) handleValue = buf.Handle;
+        else return;
+
+        if (handleValue == 0) return;
+
+        var namePtr = SilkMarshal.StringToPtr(name);
+
+        try
+        {
+            var debugNameInfo = new DebugUtilsObjectNameInfoEXT
+            {
+                SType = StructureType.DebugUtilsObjectNameInfoExt,
+                ObjectType = objectType,
+                ObjectHandle = handleValue,
+                PObjectName = (byte*)namePtr
+            };
+            debugUtils.SetDebugUtilsObjectName(_vulkanContext.Device, &debugNameInfo);
+        }
+        finally
+        {
+            SilkMarshal.Free((nint)namePtr);
+        }
+    }
+
+    /// <summary>
+    /// Validates and returns a supported depth format.
+    /// </summary>
+    private Format FindSupportedDepthFormat()
+    {
+        var candidates = new[]
+        {
+            Format.D32Sfloat,
+            Format.D32SfloatS8Uint,
+            Format.D24UnormS8Uint,
+            Format.D16UnormS8Uint,
+            Format.D16Unorm
+        };
+
+        foreach (var format in candidates)
+        {
+            var formatProps = new FormatProperties();
+            _vulkanContext!.VulkanApi.GetPhysicalDeviceFormatProperties(
+                _vulkanContext.PhysicalDevice,
+                format,
+                &formatProps);
+
+            if ((formatProps.OptimalTilingFeatures & FormatFeatureFlags.DepthStencilAttachmentBit) != 0)
+                return format;
+        }
+
+        throw new Exception("No supported depth format found");
+    }
+
+    /// <summary>
+    /// CPU-only payload for model scene data. Built on any thread, consumed on render thread.
+    /// </summary>
+    public sealed class ScenePayload
+    {
+        public string ModelName { get; set; } = string.Empty;
+        public Matrix4x4 ModelTransform { get; set; }
+        public List<Data.RenderingData.RenderObject> RenderObjects { get; } = new();
+        public List<string> RenderObjectNames { get; } = new();
+    }
+
     public void Dispose()
     {
-        //if (_vulkanContext != null) _vulkanContext.VulkanApi.DeviceWaitIdle(_vulkanContext.Device);
+        if (_vulkanContext != null) _vulkanContext.VulkanApi.DeviceWaitIdle(_vulkanContext.Device);
 
         // Phase 2: Dispose resource managers
         _descriptorManager?.Dispose();
@@ -112,11 +195,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
 
         _bindlessHeap?.Dispose();
         _descriptorSetLayouts?.Dispose();
-
-        _graphicsPipeline?.Dispose();
+        
         _meshPipeline?.Dispose();
-        _framebufferManager?.Dispose();
-        _renderPassManager?.Dispose();
         _synchronizationManager?.Dispose();
         _commandBufferManager?.Dispose();
         _swapchainManager?.Dispose();
@@ -135,9 +215,6 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
 
         if (_vulkanContext != null && _surface.Handle != 0)
             _khrSurface!.DestroySurface(_vulkanContext.Instance, _surface, null);
-
-        if (_vulkanContext != null && _meshBuffersDescriptorPool.Handle != 0)
-            _vulkanContext.VulkanApi.DestroyDescriptorPool(_vulkanContext.Device, _meshBuffersDescriptorPool, null);
 
         _vulkanContext?.Dispose();
     }
@@ -165,6 +242,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
                     out _extMeshShader)) throw new Exception("EXT_mesh_shader extension not available");
 
             _surface = CreateSurface();
+            SetDebugName(_surface, ObjectType.SurfaceKhr, "MainSurface");
             Console.WriteLine("✓ Vulkan surface created");
 
             _swapchainManager = new SwapchainManager(
@@ -196,22 +274,6 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
                 _vulkanContext.Device,
                 _swapchainManager.SwapchainImageCount);
             Console.WriteLine("✓ Synchronization primitives created");
-
-            // Create render pass
-            _renderPassManager = new RenderPassManager(
-                _vulkanContext.VulkanApi,
-                _vulkanContext.Device,
-                _swapchainManager.SwapchainImageFormat);
-            Console.WriteLine("✓ Render pass created");
-
-            // Create framebuffers
-            _framebufferManager = new FramebufferManager(
-                _vulkanContext.VulkanApi,
-                _vulkanContext.Device,
-                _renderPassManager.RenderPass,
-                _swapchainManager.SwapchainImageViews,
-                _swapchainManager.SwapchainExtent);
-            Console.WriteLine("✓ Framebuffers created");
 
 
             // Create descriptor manager
@@ -268,37 +330,16 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             _bindlessHeap.UpdateBuffer(2, _sceneMeshBuffer, 8 * 1024 * 1024); // Mesh buffer at index 2
             Console.WriteLine("✓ Scene buffers registered in bindless heap");
 
-            // Create graphics pipeline
-            // _graphicsPipeline = new GraphicsPipeline(
-            //     _vulkanContext.VulkanApi,
-            //     _vulkanContext.Device,
-            //     _renderPassManager.RenderPass,
-            //     _swapchainManager.SwapchainExtent,
-            //     "Shaders/triangle.vert.spv",
-            //     "Shaders/triangle.frag.spv");
-            _graphicsPipeline = new GraphicsPipeline(
-                _vulkanContext.VulkanApi,
-                _vulkanContext.Device,
-                _renderPassManager.RenderPass,
-                _swapchainManager.SwapchainExtent,
-                new[] // ✅ Array of 2 layouts
-                {
-                    _descriptorSetLayouts.BufferHeapLayout, // Set 0
-                    _descriptorSetLayouts.TextureHeapLayout // Set 1
-                });
-            Console.WriteLine("✓ Graphics pipeline created");
-
             _meshPipeline = new MeshPipeline(
                 _vulkanContext.VulkanApi,
                 _vulkanContext.Device,
-                _swapchainManager.SwapchainExtent,
                 new[]
                 {
                     _descriptorSetLayouts.BufferHeapLayout, // Set 0
-                    _descriptorSetLayouts.TextureHeapLayout, // Set 1
-                    _descriptorSetLayouts.MeshBuffersLayout // Set 2
+                    _descriptorSetLayouts.TextureHeapLayout  // Set 1
                 },
                 _swapchainManager.SwapchainImageFormat);
+            Console.WriteLine("✓ Mesh pipeline created (using bindless sets 0 and 1)");
 
                 // Phase 3.5: Initialize light manager
                 _lightManagerImpl = new LightManager(
@@ -338,9 +379,6 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             // _meshManager.Finalize();
             // Console.WriteLine("✓ Mesh manager finalized");
 
-            CreateMeshBuffersDescriptorSet();
-            //UpdateMeshBuffersDescriptorSet();
-
             Debug.WriteLine("Vulkan renderer initialized successfully");
             Console.WriteLine("\n✓ Renderer fully initialized - rendering started!\n");
         }
@@ -349,6 +387,9 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             Debug.WriteLine($"Failed to initialize renderer: {ex.Message}");
             Console.WriteLine($"✗ Renderer initialization failed: {ex.Message}");
             if (ex.InnerException != null) Console.WriteLine($"  Inner: {ex.InnerException.Message}");
+            // Cleanup surface on failure
+            if (_surface.Handle != 0 && _khrSurface != null)
+                _khrSurface.DestroySurface(_vulkanContext!.Instance, _surface, null);
             throw;
         }
 
@@ -361,11 +402,15 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
 
         var extent = _swapchainManager!.SwapchainExtent;
 
+        // Validate depth format support
+        var depthFormat = FindSupportedDepthFormat();
+        Console.WriteLine($"Using depth format: {depthFormat}");
+
         var imageInfo = new ImageCreateInfo
         {
             SType = StructureType.ImageCreateInfo,
             ImageType = ImageType.Type2D,
-            Format = Format.D32Sfloat,
+            Format = depthFormat,
             Extent = new Extent3D(extent.Width, extent.Height, 1),
             MipLevels = 1,
             ArrayLayers = 1,
@@ -404,7 +449,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             SType = StructureType.ImageViewCreateInfo,
             Image = _depthImage,
             ViewType = ImageViewType.Type2D,
-            Format = Format.D32Sfloat,
+            Format = depthFormat,
             SubresourceRange = new ImageSubresourceRange
             {
                 AspectMask = ImageAspectFlags.DepthBit,
@@ -415,7 +460,12 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             }
         };
 
-        _vulkanContext.VulkanApi.CreateImageView(_vulkanContext.Device, &viewInfo, null, out _depthImageView);
+        if (_vulkanContext.VulkanApi.CreateImageView(_vulkanContext.Device, &viewInfo, null, out _depthImageView) != Result.Success)
+            throw new InvalidOperationException("Failed to create depth image view");
+
+        // Set debug names for depth resources
+        SetDebugName(_depthImage, ObjectType.Image, "DepthImage");
+        SetDebugName(_depthImageView, ObjectType.ImageView, "DepthImageView");
     }
     
     private void CreateDefaultSampler()
@@ -443,6 +493,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         if (_vulkanContext!.VulkanApi.CreateSampler(_vulkanContext.Device, &samplerInfo, null, out _defaultSampler) != Result.Success)
             throw new InvalidOperationException("Failed to create default sampler");
 
+        SetDebugName(_defaultSampler, ObjectType.Sampler, "DefaultSampler");
         Console.WriteLine("✓ Default sampler created");
     }
 
@@ -551,9 +602,17 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     {
         if (_vulkanContext == null || _swapchainManager == null ||
             _commandBufferManager == null || _synchronizationManager == null ||
-            _renderPassManager == null || _framebufferManager == null ||
             _meshPipeline == null || _meshManager == null)
             return;
+
+        // Drain scene payload queue from CPU thread
+        while (_scenePayloadQueue.TryDequeue(out var payload))
+        {
+            IntegratePayload(payload);
+        }
+
+        // Flush deletion queue for completed frames
+        FlushDeletionQueue();
 
         var vk = _vulkanContext.VulkanApi;
         var device = _vulkanContext.Device;
@@ -660,7 +719,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             BindlessHeap = _bindlessHeap,
             MeshManager = _meshManager,
             SceneDataBuilder = _sceneBuilder,
-            MeshBuffersSet = _meshBuffersDescriptorSet,
+
             LightCount = LightManager?.LightCount ?? 0,
             LightBufferIndex = LightManager?.LightBufferBindlessIndex ?? 0,
             TiledLightHeaderBufferIndex = _tiledLightCullingPass?.TiledLightHeaderBufferIndex ?? 0,
@@ -716,14 +775,106 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     }
 
     /// <summary>
-    ///     Re-finalizes the mesh manager and updates the mesh buffers descriptor set.
+    /// Queue a buffer handle for deferred deletion.
+    /// Buffers are deleted after MaxFramesInFlight frames to ensure GPU is done with them.
+    /// </summary>
+    private void QueueBufferDeletion(BufferHandle? handle, uint deleteAfterFrame)
+    {
+        if (!handle.HasValue || !handle.Value.IsValid) return;
+        
+        if (!_deletionQueue.TryGetValue(deleteAfterFrame, out var actions))
+        {
+            actions = new List<Action>();
+            _deletionQueue[deleteAfterFrame] = actions;
+        }
+        actions.Add(() => _bufferManager?.FreeBuffer(handle.Value));
+    }
+
+    /// <summary>
+    /// Flush the deletion queue for frames that have completed.
+    /// Called each frame to clean up resources that are no longer in use by the GPU.
+    /// </summary>
+    private void FlushDeletionQueue()
+    {
+        uint current = _currentFrameIndex;
+        var keysToRemove = new List<uint>();
+        
+        foreach (var kvp in _deletionQueue)
+        {
+            if (kvp.Key <= current)
+            {
+                foreach (var action in kvp.Value)
+                    action();
+                keysToRemove.Add(kvp.Key);
+            }
+        }
+        
+        foreach (var key in keysToRemove)
+            _deletionQueue.Remove(key);
+    }
+
+    /// <summary>
+    ///     Re-finalizes the mesh manager and registers mesh buffers in bindless heap.
     ///     Call this after adding new render objects post-Load().
     /// </summary>
     public void FinalizeAndUpdateMeshBuffers()
     {
-        _meshManager?.FinalizeOrReFinalize();
-        UpdateMeshBuffersDescriptorSet();
-        Console.WriteLine("✓ Mesh buffers re-finalized after model load");
+        if (_meshManager == null || _vulkanContext == null || _bindlessHeap == null) return;
+        
+        // Check if we're re-finalizing (old buffers exist)
+        if (_meshManager.IsFinalized)
+        {
+            // Queue old buffers for deferred deletion
+            // They'll be deleted after MaxFramesInFlight frames
+            var oldHandles = _meshManager.OldBufferHandles;
+            uint deleteAfterFrame = _currentFrameIndex + MaxFramesInFlight;
+            
+            QueueBufferDeletion(oldHandles.Vertex, deleteAfterFrame);
+            QueueBufferDeletion(oldHandles.Index, deleteAfterFrame);
+            QueueBufferDeletion(oldHandles.Meshlet, deleteAfterFrame);
+            QueueBufferDeletion(oldHandles.MeshletVertexIndices, deleteAfterFrame);
+            QueueBufferDeletion(oldHandles.MeshletTriangleIndices, deleteAfterFrame);
+            
+            // Clear old handles so they aren't queued again
+            _meshManager.ClearOldBufferHandles();
+        }
+        
+        _meshManager.FinalizeOrReFinalize();
+        RegisterMeshBuffersInBindlessHeap();
+        Console.WriteLine("✓ Mesh buffers re-finalized and registered in bindless heap");
+    }
+
+    /// <summary>
+    ///     Register mesh buffers in the bindless descriptor heap at fixed indices.
+    /// </summary>
+    private void RegisterMeshBuffersInBindlessHeap()
+    {
+        if (_meshManager == null || _bindlessHeap == null || _bufferManager == null) return;
+        
+        // Get all buffer handles
+        var allHandles = _meshManager.GetAllMeshBufferHandles();
+        
+        // Get mesh buffers
+        var (vertexBuffer, indexBuffer) = _meshManager.GetMeshBuffers();
+        var (meshletBuffer, meshletVertexIndicesBuffer, meshletTriangleIndicesBuffer) =
+            _meshManager.GetMeshletBuffers();
+        
+        // Get buffer sizes from BufferManager
+        var vertexSize = _bufferManager.GetBufferSize(allHandles.VertexHandle);
+        var indexSize = _bufferManager.GetBufferSize(allHandles.IndexHandle);
+        var meshletSize = _bufferManager.GetBufferSize(allHandles.MeshletHandle);
+        var meshletVertexIndexSize = _bufferManager.GetBufferSize(allHandles.MeshletVertexIndicesHandle);
+        var meshletTriangleIndexSize = _bufferManager.GetBufferSize(allHandles.MeshletTriangleIndicesHandle);
+        
+        // Register with bindless heap at fixed indices (3-7)
+        // These indices must match what the shaders expect
+        _bindlessHeap.UpdateBuffer(_vertexBufferBindlessIndex, vertexBuffer, vertexSize);
+        _bindlessHeap.UpdateBuffer(_indexBufferBindlessIndex, indexBuffer, indexSize);
+        _bindlessHeap.UpdateBuffer(_meshletBufferBindlessIndex, meshletBuffer, meshletSize);
+        _bindlessHeap.UpdateBuffer(_meshletVertexIndexBufferBindlessIndex, meshletVertexIndicesBuffer, meshletVertexIndexSize);
+        _bindlessHeap.UpdateBuffer(_meshletTriangleIndexBufferBindlessIndex, meshletTriangleIndicesBuffer, meshletTriangleIndexSize);
+        
+        Console.WriteLine("✓ Mesh buffers registered in bindless heap at indices 3-7");
     }
 
     /// <summary>
@@ -750,6 +901,9 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         if (_vulkanContext != null)
             surface = _window!.VkSurface!.Create<AllocationCallbacks>(_vulkanContext.Instance.ToHandle(), null)
                 .ToSurface();
+
+        if (surface.Handle == 0)
+            throw new Exception("Failed to create Vulkan surface");
 
         return surface;
     }
@@ -832,8 +986,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     {
         var vk = _vulkanContext!.VulkanApi;
         vk.DeviceWaitIdle(_vulkanContext.Device);
-
-        _framebufferManager?.Dispose();
+        
         _swapchainManager?.Dispose();
 
         _swapchainManager = new SwapchainManager(
@@ -847,13 +1000,6 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             (uint)_window.Size.Y);
         _swapchainImageLayouts = Enumerable.Repeat(ImageLayout.Undefined, (int)_swapchainManager.SwapchainImageCount)
             .ToArray();
-
-        _framebufferManager = new FramebufferManager(
-            vk,
-            _vulkanContext.Device,
-            _renderPassManager!.RenderPass,
-            _swapchainManager.SwapchainImageViews,
-            _swapchainManager.SwapchainExtent);
     }
 
     private void TransitionImageLayout(CommandBuffer commandBuffer, Image image,
@@ -924,164 +1070,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         vk.CmdPipelineBarrier(commandBuffer, sourceStage, destinationStage, 0,
             0, null, 0, null, 1, &barrier);
     }
-
-    private void CreateMeshBuffersDescriptorSet()
-    {
-        if (_descriptorSetLayouts == null || _vulkanContext == null)
-            throw new InvalidOperationException("Descriptor set layouts not initialized");
-
-        var poolSizes = stackalloc DescriptorPoolSize[5];
-        poolSizes[0] = new DescriptorPoolSize
-        {
-            Type = DescriptorType.StorageBuffer,
-            DescriptorCount = 1
-        };
-        poolSizes[1] = new DescriptorPoolSize
-        {
-            Type = DescriptorType.StorageBuffer,
-            DescriptorCount = 1
-        };
-        poolSizes[2] = new DescriptorPoolSize
-        {
-            Type = DescriptorType.StorageBuffer,
-            DescriptorCount = 1
-        };
-        poolSizes[3] = new DescriptorPoolSize
-        {
-            Type = DescriptorType.StorageBuffer,
-            DescriptorCount = 1
-        };
-
-        poolSizes[4] = new DescriptorPoolSize
-        {
-            Type = DescriptorType.StorageBuffer,
-            DescriptorCount = 1
-        };
-
-        var poolInfo = new DescriptorPoolCreateInfo
-        {
-            SType = StructureType.DescriptorPoolCreateInfo,
-            PoolSizeCount = 5,
-            PPoolSizes = poolSizes,
-            MaxSets = 1
-        };
-
-        if (_vulkanContext.VulkanApi.CreateDescriptorPool(_vulkanContext.Device, &poolInfo, null,
-                out _meshBuffersDescriptorPool) !=
-            Result.Success) throw new InvalidOperationException("Failed to create mesh buffers descriptor pool");
-
-        var layout = _descriptorSetLayouts.MeshBuffersLayout;
-        var allocInfo = new DescriptorSetAllocateInfo
-        {
-            SType = StructureType.DescriptorSetAllocateInfo,
-            DescriptorPool = _meshBuffersDescriptorPool,
-            DescriptorSetCount = 1,
-            PSetLayouts = &layout
-        };
-
-        if (_vulkanContext.VulkanApi.AllocateDescriptorSets(_vulkanContext.Device, &allocInfo,
-                out _meshBuffersDescriptorSet) !=
-            Result.Success) throw new InvalidOperationException("Failed to allocate mesh buffers descriptor set");
-    }
-
-    private void UpdateMeshBuffersDescriptorSet()
-    {
-        if (_meshManager == null || _vulkanContext == null)
-            throw new InvalidOperationException("Mesh manager not initialized");
-
-        var (vertexBuffer, indexBuffer) = _meshManager.GetMeshBuffers();
-        var (meshletBuffer, meshletVertexIndicesBuffer, meshletTriangleIndicesBuffer) =
-            _meshManager.GetMeshletBuffers();
-
-        var vertexInfo = new DescriptorBufferInfo
-        {
-            Buffer = vertexBuffer,
-            Offset = 0,
-            Range = Vk.WholeSize
-        };
-
-        var indexInfo = new DescriptorBufferInfo
-        {
-            Buffer = indexBuffer,
-            Offset = 0,
-            Range = Vk.WholeSize
-        };
-
-        var meshletInfo = new DescriptorBufferInfo
-        {
-            Buffer = meshletBuffer,
-            Offset = 0,
-            Range = Vk.WholeSize
-        };
-
-        var meshletVertexIndexInfo = new DescriptorBufferInfo
-        {
-            Buffer = meshletVertexIndicesBuffer,
-            Offset = 0,
-            Range = Vk.WholeSize
-        };
-
-        var meshletTriangleIndexInfo = new DescriptorBufferInfo
-        {
-            Buffer = meshletTriangleIndicesBuffer,
-            Offset = 0,
-            Range = Vk.WholeSize
-        };
-
-        var writes = stackalloc WriteDescriptorSet[5];
-        writes[0] = new WriteDescriptorSet
-        {
-            SType = StructureType.WriteDescriptorSet,
-            DstSet = _meshBuffersDescriptorSet,
-            DstBinding = 0,
-            DstArrayElement = 0,
-            DescriptorCount = 1,
-            DescriptorType = DescriptorType.StorageBuffer,
-            PBufferInfo = &vertexInfo
-        };
-        writes[1] = new WriteDescriptorSet
-        {
-            SType = StructureType.WriteDescriptorSet,
-            DstSet = _meshBuffersDescriptorSet,
-            DstBinding = 1,
-            DstArrayElement = 0,
-            DescriptorCount = 1,
-            DescriptorType = DescriptorType.StorageBuffer,
-            PBufferInfo = &indexInfo
-        };
-        writes[2] = new WriteDescriptorSet
-        {
-            SType = StructureType.WriteDescriptorSet,
-            DstSet = _meshBuffersDescriptorSet,
-            DstBinding = 2,
-            DstArrayElement = 0,
-            DescriptorCount = 1,
-            DescriptorType = DescriptorType.StorageBuffer,
-            PBufferInfo = &meshletInfo
-        };
-        writes[3] = new WriteDescriptorSet
-        {
-            SType = StructureType.WriteDescriptorSet,
-            DstSet = _meshBuffersDescriptorSet,
-            DstBinding = 3,
-            DstArrayElement = 0,
-            DescriptorCount = 1,
-            DescriptorType = DescriptorType.StorageBuffer,
-            PBufferInfo = &meshletVertexIndexInfo
-        };
-        writes[4] = new WriteDescriptorSet
-        {
-            SType = StructureType.WriteDescriptorSet,
-            DstSet = _meshBuffersDescriptorSet,
-            DstBinding = 4,
-            DstArrayElement = 0,
-            DescriptorCount = 1,
-            DescriptorType = DescriptorType.StorageBuffer,
-            PBufferInfo = &meshletTriangleIndexInfo
-        };
-
-        _vulkanContext.VulkanApi.UpdateDescriptorSets(_vulkanContext.Device, 5, writes, 0, null);
-    }
+    
 
     public Task InitializeAsync()
     {
@@ -1114,23 +1103,27 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         return new SceneDataBuilder(_meshManager, _textureManager, _bindlessHeap);
     }
 
-    public void LoadModelIntoScene(IModel model)
+    /// <summary>
+    /// Builds CPU-only payload for a model. Callable from any thread.
+    /// </summary>
+    public ScenePayload BuildCpuPayload(IModel model)
     {
         if (model == null) throw new ArgumentNullException(nameof(model));
 
-        var meshes    = model.Meshes.ToList();
-        var materials = model.Materials.ToList();
-        var renderObjectNames = new List<string>();
+        var payload = new ScenePayload
+        {
+            ModelName = model.Name,
+            ModelTransform = (model as NjulfFramework.Assets.Models.FrameworkModel)?.RootNode?.Transform ?? Matrix4x4.Identity
+        };
 
-        // Use the model's root node transform, falling back to identity if not available
-        var modelTransform = (model as NjulfFramework.Assets.Models.FrameworkModel)?.RootNode?.Transform ?? Matrix4x4.Identity;
+        var meshes = model.Meshes.ToList();
+        var materials = model.Materials.ToList();
 
         for (int i = 0; i < meshes.Count; i++)
         {
             var iMesh = meshes[i];
-            var iMat  = i < materials.Count ? materials[i] : null;
+            var iMat = i < materials.Count ? materials[i] : null;
 
-            // Map IMesh → RenderingData.Mesh
             var rdVertices = new Data.RenderingData.Vertex[iMesh.Vertices.Length];
             for (int v = 0; v < iMesh.Vertices.Length; v++)
                 rdVertices[v] = new Data.RenderingData.Vertex(
@@ -1145,7 +1138,6 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
                 iMesh.BoundingBoxMin,
                 iMesh.BoundingBoxMax);
 
-            // Map IMaterial → RenderingData.Material
             var rdMat = new Data.RenderingData.Material(
                 iMat?.Name ?? "default",
                 "Shaders/test_vert.spv",
@@ -1153,24 +1145,51 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
 
             if (iMat != null)
             {
-                rdMat.BaseColorFactor   = iMat.BaseColorFactor;
-                rdMat.MetallicFactor    = iMat.MetallicFactor;
-                rdMat.RoughnessFactor   = iMat.RoughnessFactor;
+                rdMat.BaseColorFactor = iMat.BaseColorFactor;
+                rdMat.MetallicFactor = iMat.MetallicFactor;
+                rdMat.RoughnessFactor = iMat.RoughnessFactor;
                 rdMat.NormalTexturePath = iMat.NormalTexturePath;
-                rdMat.EmissiveFactor    = iMat.EmissiveFactor;
+                rdMat.EmissiveFactor = iMat.EmissiveFactor;
             }
 
             var renderObjName = $"model_{model.Name}_{i}_{iMesh.Name}";
-            AddRenderObject(new Data.RenderingData.RenderObject(
-                renderObjName, rdMesh, rdMat, modelTransform));
-            renderObjectNames.Add(renderObjName);
+            payload.RenderObjects.Add(new Data.RenderingData.RenderObject(
+                renderObjName, rdMesh, rdMat, payload.ModelTransform));
+            payload.RenderObjectNames.Add(renderObjName);
         }
 
-        // Track which render objects belong to this model
-        _modelToRenderObjectNames[model.Name] = renderObjectNames;
+        return payload;
+    }
+
+    /// <summary>
+    /// Integrates a CPU-built payload into the scene. Must be called from the render thread.
+    /// </summary>
+    private void IntegratePayload(ScenePayload payload)
+    {
+        foreach (var renderObj in payload.RenderObjects)
+        {
+            _renderObjects[renderObj.Name] = renderObj;
+            if (_meshManager != null)
+            {
+                _meshManager.RegisterMesh(renderObj.Mesh);
+            }
+        }
+
+        _modelToRenderObjectNames[payload.ModelName] = payload.RenderObjectNames;
 
         FinalizeAndUpdateMeshBuffers();
-        Console.WriteLine($"✓ Model '{model.Name}' loaded: {meshes.Count} mesh(es) added to scene");
+        Console.WriteLine($"✓ Model '{payload.ModelName}' loaded: {payload.RenderObjects.Count} mesh(es) added to scene");
+    }
+
+    public void LoadModelIntoScene(IModel model)
+    {
+        if (model == null) throw new ArgumentNullException(nameof(model));
+
+        // Build CPU payload (thread-safe, no GPU operations)
+        var payload = BuildCpuPayload(model);
+
+        // Enqueue for render thread integration
+        _scenePayloadQueue.Enqueue(payload);
     }
 
     public void UpdateModelTransform(IModel model, Matrix4x4 transform)
@@ -1193,4 +1212,6 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             }
         }
     }
+    
+    
 }
