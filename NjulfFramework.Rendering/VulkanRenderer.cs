@@ -39,6 +39,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     private readonly Dictionary<string, List<string>> _modelToRenderObjectNames = new();
     private readonly ConcurrentQueue<ScenePayload> _scenePayloadQueue = new();
     private readonly Dictionary<uint, List<Action>> _deletionQueue = new();
+    private uint _meshBuffersDeleteAfterFrame = uint.MaxValue;
 
     private SceneDataBuilder? _sceneBuilder;
 
@@ -299,7 +300,9 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             _meshManager = new MeshManager(
                 _vulkanContext.VulkanApi,
                 _vulkanContext.Device,
-                _bufferManager);
+                _bufferManager,
+                _vulkanContext.GraphicsQueueFamily,
+                _vulkanContext.TransferQueueFamily);
             Console.WriteLine("✓ Mesh manager initialized");
 
             // Create texture manager
@@ -838,10 +841,22 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         
         foreach (var key in keysToRemove)
             _deletionQueue.Remove(key);
+        
+        // Check if we need to update bindless heap after mesh buffer re-finalization
+        // Mesh buffers were queued for deletion at _meshBuffersDeleteAfterFrame
+        // Once currentFrame >= _meshBuffersDeleteAfterFrame, all in-flight frames that could
+        // reference the old buffers have completed, so it's safe to update the bindless heap
+        if (_meshBuffersDeleteAfterFrame != uint.MaxValue && current >= _meshBuffersDeleteAfterFrame)
+        {
+            // All frames that could have referenced the old mesh buffers have completed
+            RegisterMeshBuffersInBindlessHeap();
+            _meshBuffersDeleteAfterFrame = uint.MaxValue;
+            Console.WriteLine("✓ Bindless heap updated with new mesh buffers (frame " + current + ")");
+        }
     }
 
     /// <summary>
-    ///     Re-finalizes the mesh manager and registers mesh buffers in bindless heap.
+    ///     Re-finalizes the mesh manager. Bindless heap update is deferred until old buffers are safe.
     ///     Call this after adding new render objects post-Load().
     /// </summary>
     public void FinalizeAndUpdateMeshBuffers()
@@ -854,21 +869,31 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             // Queue old buffers for deferred deletion
             // They'll be deleted after MaxFramesInFlight frames
             var oldHandles = _meshManager.OldBufferHandles;
-            uint deleteAfterFrame = _currentFrameIndex + MaxFramesInFlight;
+            _meshBuffersDeleteAfterFrame = _currentFrameIndex + MaxFramesInFlight;
             
-            QueueBufferDeletion(oldHandles.Vertex, deleteAfterFrame);
-            QueueBufferDeletion(oldHandles.Index, deleteAfterFrame);
-            QueueBufferDeletion(oldHandles.Meshlet, deleteAfterFrame);
-            QueueBufferDeletion(oldHandles.MeshletVertexIndices, deleteAfterFrame);
-            QueueBufferDeletion(oldHandles.MeshletTriangleIndices, deleteAfterFrame);
+            QueueBufferDeletion(oldHandles.Vertex, _meshBuffersDeleteAfterFrame);
+            QueueBufferDeletion(oldHandles.Index, _meshBuffersDeleteAfterFrame);
+            QueueBufferDeletion(oldHandles.Meshlet, _meshBuffersDeleteAfterFrame);
+            QueueBufferDeletion(oldHandles.MeshletVertexIndices, _meshBuffersDeleteAfterFrame);
+            QueueBufferDeletion(oldHandles.MeshletTriangleIndices, _meshBuffersDeleteAfterFrame);
             
             // Clear old handles so they aren't queued again
             _meshManager.ClearOldBufferHandles();
         }
         
         _meshManager.FinalizeOrReFinalize();
-        RegisterMeshBuffersInBindlessHeap();
-        Console.WriteLine("✓ Mesh buffers re-finalized and registered in bindless heap");
+        
+        // Only update bindless heap if this is the first finalization (no old buffers in flight)
+        // For re-finalization, the bindless heap update is deferred to after old buffers are deleted
+        if (!_meshManager.IsFinalized || _meshBuffersDeleteAfterFrame == uint.MaxValue)
+        {
+            RegisterMeshBuffersInBindlessHeap();
+            Console.WriteLine("✓ Mesh buffers finalized and registered in bindless heap");
+        }
+        else
+        {
+            Console.WriteLine("✓ Mesh buffers re-finalized (bindless heap update deferred until frame " + _meshBuffersDeleteAfterFrame + ")");
+        }
     }
 
     /// <summary>

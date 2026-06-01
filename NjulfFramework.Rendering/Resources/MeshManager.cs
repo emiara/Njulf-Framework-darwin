@@ -27,14 +27,18 @@ public class MeshManager : IMeshManager
     private readonly Dictionary<string, Data.RenderingData.Mesh> _meshByName = new();
     private readonly Vk _vk;
     private bool _finalized;
+    private readonly uint _graphicsQueueFamily;
+    private readonly uint _transferQueueFamily;
 
-    public MeshManager(Vk vk, Device device, BufferManager bufferManager)
+    public MeshManager(Vk vk, Device device, BufferManager bufferManager, uint graphicsQueueFamily, uint transferQueueFamily)
     {
         _vk = vk ?? throw new ArgumentNullException(nameof(vk));
         _device = device;
         _bufferManager = bufferManager ?? throw new ArgumentNullException(nameof(bufferManager));
+        _graphicsQueueFamily = graphicsQueueFamily;
+        _transferQueueFamily = transferQueueFamily;
 
-        _meshBuffer = new MeshBuffer(bufferManager, vk, device);
+        _meshBuffer = new MeshBuffer(bufferManager, vk, device, graphicsQueueFamily, transferQueueFamily);
     }
     
 

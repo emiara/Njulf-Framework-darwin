@@ -6,6 +6,7 @@ using NjulfFramework.Rendering.Memory;
 using NjulfFramework.Rendering.RenderingData;
 using NjulfFramework.Rendering.Resources.Handles;
 using Silk.NET.Vulkan;
+using Silk.NET.Vulkan.Extensions.EXT;
 using Vma;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
@@ -40,14 +41,18 @@ public class MeshBuffer : IDisposable
 
     private bool _meshletDataUploaded;
     private Buffer _vertexBuffer;
+    private readonly uint _graphicsQueueFamily;
+    private readonly uint _transferQueueFamily;
 
     // GPU-side consolidated buffers
 
-    public MeshBuffer(BufferManager bufferManager, Vk vk, Device device)
+    public MeshBuffer(BufferManager bufferManager, Vk vk, Device device, uint graphicsQueueFamily, uint transferQueueFamily)
     {
         _bufferManager = bufferManager ?? throw new ArgumentNullException(nameof(bufferManager));
         _vk = vk ?? throw new ArgumentNullException(nameof(vk));
         _device = device;
+        _graphicsQueueFamily = graphicsQueueFamily;
+        _transferQueueFamily = transferQueueFamily;
     }
 
     /// <summary>
@@ -524,6 +529,117 @@ public class MeshBuffer : IDisposable
             Size = meshletTriangleIndexSize
         };
         _vk.CmdCopyBuffer(transferCmd, srcBuffer, MeshletTriangleIndicesBuffer, 1, &meshletTriangleIndexCopy);
+
+        // Add buffer memory barriers for proper synchronization between transfer and graphics queues
+        // This ensures mesh/task shaders see the transferred data
+        var useSeparateQueues = _transferQueueFamily != _graphicsQueueFamily;
+
+        if (useSeparateQueues)
+        {
+            // Three barriers for the three meshlet buffers
+            var barriers = stackalloc BufferMemoryBarrier[3];
+            int barrierCount = 0;
+
+            // Meshlet buffer barrier
+            barriers[barrierCount++] = new BufferMemoryBarrier
+            {
+                SType = StructureType.BufferMemoryBarrier,
+                SrcAccessMask = AccessFlags.TransferWriteBit,
+                DstAccessMask = AccessFlags.ShaderReadBit,
+                SrcQueueFamilyIndex = _transferQueueFamily,
+                DstQueueFamilyIndex = _graphicsQueueFamily,
+                Buffer = MeshletBuffer,
+                Offset = 0,
+                Size = meshletSize
+            };
+
+            // Meshlet vertex indices buffer barrier
+            barriers[barrierCount++] = new BufferMemoryBarrier
+            {
+                SType = StructureType.BufferMemoryBarrier,
+                SrcAccessMask = AccessFlags.TransferWriteBit,
+                DstAccessMask = AccessFlags.ShaderReadBit,
+                SrcQueueFamilyIndex = _transferQueueFamily,
+                DstQueueFamilyIndex = _graphicsQueueFamily,
+                Buffer = MeshletVertexIndicesBuffer,
+                Offset = 0,
+                Size = meshletVertexIndexSize
+            };
+
+            // Meshlet triangle indices buffer barrier
+            barriers[barrierCount++] = new BufferMemoryBarrier
+            {
+                SType = StructureType.BufferMemoryBarrier,
+                SrcAccessMask = AccessFlags.TransferWriteBit,
+                DstAccessMask = AccessFlags.ShaderReadBit,
+                SrcQueueFamilyIndex = _transferQueueFamily,
+                DstQueueFamilyIndex = _graphicsQueueFamily,
+                Buffer = MeshletTriangleIndicesBuffer,
+                Offset = 0,
+                Size = meshletTriangleIndexSize
+            };
+
+            // Release ownership from transfer queue to graphics queue
+            _vk.CmdPipelineBarrier(
+                transferCmd,
+                PipelineStageFlags.TransferBit,
+                PipelineStageFlags.BottomOfPipeBit,
+                0,
+                0, null,
+                (uint)barrierCount, barriers,
+                0, null);
+        }
+        else
+        {
+            // Same queue family - just need execution dependency
+            var barriers = stackalloc BufferMemoryBarrier[3];
+            int barrierCount = 0;
+
+            barriers[barrierCount++] = new BufferMemoryBarrier
+            {
+                SType = StructureType.BufferMemoryBarrier,
+                SrcAccessMask = AccessFlags.TransferWriteBit,
+                DstAccessMask = AccessFlags.ShaderReadBit,
+                SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                Buffer = MeshletBuffer,
+                Offset = 0,
+                Size = meshletSize
+            };
+
+            barriers[barrierCount++] = new BufferMemoryBarrier
+            {
+                SType = StructureType.BufferMemoryBarrier,
+                SrcAccessMask = AccessFlags.TransferWriteBit,
+                DstAccessMask = AccessFlags.ShaderReadBit,
+                SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                Buffer = MeshletVertexIndicesBuffer,
+                Offset = 0,
+                Size = meshletVertexIndexSize
+            };
+
+            barriers[barrierCount++] = new BufferMemoryBarrier
+            {
+                SType = StructureType.BufferMemoryBarrier,
+                SrcAccessMask = AccessFlags.TransferWriteBit,
+                DstAccessMask = AccessFlags.ShaderReadBit,
+                SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                Buffer = MeshletTriangleIndicesBuffer,
+                Offset = 0,
+                Size = meshletTriangleIndexSize
+            };
+
+            _vk.CmdPipelineBarrier(
+                transferCmd,
+                PipelineStageFlags.TransferBit,
+                PipelineStageFlags.MeshShaderBitExt | PipelineStageFlags.TaskShaderBitExt,
+                0,
+                0, null,
+                (uint)barrierCount, barriers,
+                0, null);
+        }
 
         _meshletDataUploaded = true;
     }
