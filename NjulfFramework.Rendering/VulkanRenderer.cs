@@ -79,6 +79,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     private uint _meshletDrawBufferBindlessIndex = 10;
     private MeshManager? _meshManager;
     private MeshPipeline? _meshPipeline;
+    private bool _meshBuffersNeedBindlessRegistration = false;
 
     private RenderGraph? _renderGraph;
     private Buffer _sceneMaterialBuffer;
@@ -703,6 +704,13 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             if (renderObject?.Mesh != null)
                 _meshManager.UploadMeshToGPU(renderObject.Mesh, transferCommandBuffer, _frameUploadRing);
 
+        // Register mesh buffers in bindless heap after first upload (fixes use-of-uninitialized-buffer race)
+        if (_meshBuffersNeedBindlessRegistration)
+        {
+            RegisterMeshBuffersInBindlessHeap();
+            _meshBuffersNeedBindlessRegistration = false;
+        }
+
         // Write CPU scene data to staging buffer and record copy commands
         // Use QFOT (Queue Family Ownership Transfer) for proper texture synchronization
         _sceneBuilder.UploadToGPU(
@@ -767,8 +775,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             LightBufferIndex = LightManager?.LightBufferBindlessIndex ?? 0,
             TiledLightHeaderBufferIndex = _tiledLightCullingPass?.TiledLightHeaderBufferIndex ?? 0,
             TiledLightIndicesBufferIndex = _tiledLightCullingPass?.TiledLightIndicesBufferIndex ?? 0,
-            InstanceBufferIndex = _instanceBufferBindlessIndex,
-            MeshletDrawBufferIndex = _meshletDrawBufferBindlessIndex,
+            InstanceBufferIndex = _instanceBufferBindlessIndex + frameIndex,
+            MeshletDrawBufferIndex = _meshletDrawBufferBindlessIndex + frameIndex,
             MeshletDrawCount = _sceneBuilder.MeshletDrawCount
         };
 
@@ -888,8 +896,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         // For re-finalization, the bindless heap update is deferred to FlushDeletionQueue after fence signals
         if (!_meshManager.IsFinalized || !_meshManager.HasOldBuffersPendingDeletion)
         {
-            RegisterMeshBuffersInBindlessHeap();
-            Console.WriteLine("✓ Mesh buffers finalized and registered in bindless heap");
+            _meshBuffersNeedBindlessRegistration = true;
+            Console.WriteLine("✓ Mesh buffers finalized (bindless heap registration deferred until after first upload)");
         }
         else
         {

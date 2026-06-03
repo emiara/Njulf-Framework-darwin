@@ -41,6 +41,8 @@ public class SceneDataBuilder : ISceneDataBuilder
     // Store queue families for QFOT
     private uint _lastTransferQueueFamily;
     private uint _lastGraphicsQueueFamily;
+    
+    private uint _lastMeshletDrawCount;
 
     public SceneDataBuilder(MeshManager meshManager, TextureManager textureManager, BindlessDescriptorHeap bindlessHeap)
     {
@@ -606,9 +608,9 @@ public class SceneDataBuilder : ISceneDataBuilder
         return size;
     }
 
-        /// <summary>
-        ///     Upload per-frame instance and meshlet-draw lists for GPU-driven rendering.
-        /// </summary>
+    /// <summary>
+    ///     Upload per-frame instance and meshlet-draw lists for GPU-driven rendering.
+    /// </summary>
     public unsafe void UploadInstanceAndDrawData(Vk vk, CommandBuffer transferCmd, FrameUploadRing uploadRing,
         Buffer instanceBuffer, Buffer meshletDrawBuffer)
     {
@@ -617,6 +619,7 @@ public class SceneDataBuilder : ISceneDataBuilder
 
         var instanceArray = _instanceData.ToArray();
         var drawArray = _meshletDraws.ToArray();
+        var currentDrawCount = (uint)drawArray.Length;
 
         uploadRing.WriteData<GPUInstanceData>(instanceArray, out var instanceSrc);
         uploadRing.WriteData<GPUMeshletDraw>(drawArray, out var drawSrc);
@@ -630,6 +633,17 @@ public class SceneDataBuilder : ISceneDataBuilder
         var drawSize = (ulong)drawArray.Length * GPUMeshletDraw.GetSizeInBytes();
         var drawCopy = new BufferCopy { SrcOffset = drawSrc, DstOffset = 0, Size = drawSize };
         vk.CmdCopyBuffer(transferCmd, src, meshletDrawBuffer, 1, &drawCopy);
+
+        // Clear stale entries if count decreased
+        if (currentDrawCount < _lastMeshletDrawCount)
+        {
+            var clearSize = _lastMeshletDrawCount * GPUMeshletDraw.GetSizeInBytes() - drawSize;
+            uploadRing.WriteData(new GPUMeshletDraw[1] { new GPUMeshletDraw() }, out var clearSrc);
+            var clearCopy = new BufferCopy { SrcOffset = clearSrc, DstOffset = drawSize, Size = clearSize };
+            vk.CmdCopyBuffer(transferCmd, src, meshletDrawBuffer, 1, &clearCopy);
+        }
+
+        _lastMeshletDrawCount = currentDrawCount;
     }
     
 }
