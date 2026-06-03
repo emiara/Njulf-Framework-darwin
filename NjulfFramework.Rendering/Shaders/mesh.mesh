@@ -24,9 +24,12 @@ layout(push_constant) uniform PushConstants
     uint instanceBufferIndex;
     uint meshletDrawBufferIndex;
     uint meshletDrawCount;
-    uint pad0;
-    uint pad1;
+    uint FrameIndex;
+    uint MaxFramesInFlight;
 } pc;
+
+// Double-buffered buffer access: add FrameIndex offset to per-frame buffers
+#define DB_BO(f) (buffers[(f) + pc.FrameIndex])
 
 struct Payload { uint instanceIndex; uint meshletIndex; };
 taskPayloadSharedEXT Payload payload;
@@ -48,12 +51,12 @@ mat4 getInstanceModel(uint instanceIndex) {
     uint base = instanceIndex * INSTANCE_STRIDE;
     mat4 m;
     for (int i = 0; i < 16; i++)
-        m[i / 4][i % 4] = uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + uint(i)]);
+        m[i / 4][i % 4] = uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + uint(i)]);
     return m;
 }
 
 uint getInstanceMaterial(uint instanceIndex) {
-    return buffers[pc.instanceBufferIndex].data[instanceIndex * INSTANCE_STRIDE + 16u];
+    return DB_BO(pc.instanceBufferIndex).data[instanceIndex * INSTANCE_STRIDE + 16u];
 }
 
 void unpackVertex(uint vertexIndex, out vec3 position, out vec3 normal, out vec2 texCoord)

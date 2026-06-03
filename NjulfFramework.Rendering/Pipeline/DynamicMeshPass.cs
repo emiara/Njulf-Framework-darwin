@@ -125,8 +125,8 @@ public class DynamicMeshPass : RenderGraphPass
                 InstanceBufferIndex = ctx.InstanceBufferIndex,
                 MeshletDrawBufferIndex = ctx.MeshletDrawBufferIndex,
                 MeshletDrawCount = ctx.MeshletDrawCount,
-                Pad0 = 0,
-                Pad1 = 0
+                FrameIndex = ctx.FrameIndex,
+                MaxFramesInFlight = 2
             };
 
             _vk.CmdPushConstants(cmd, _pipeline.PipelineLayout,

@@ -137,6 +137,21 @@ public class MeshManager : IMeshManager
     public void ClearOldBufferHandles() => _meshBuffer.ClearOldBufferHandles();
 
     /// <summary>
+    /// Set the fence associated with old buffers for tracking when they can be safely deleted.
+    /// </summary>
+    public void SetOldBufferFence(Fence fence) => _meshBuffer.SetOldBufferFence(fence);
+
+    /// <summary>
+    /// Whether there are old buffers pending deletion.
+    /// </summary>
+    public bool HasOldBuffersPendingDeletion => _meshBuffer.HasOldBuffersPendingDeletion;
+
+    /// <summary>
+    /// Check if all old buffer fences have signaled (safe to update bindless heap).
+    /// </summary>
+    public bool OldBufferFencesAllSignaled(Vk vk, Device device) => _meshBuffer.OldBufferFencesAllSignaled(vk, device);
+
+    /// <summary>
     /// Reset the finalization state and perform dynamic finalization.
     /// Allows adding new meshes after initial finalization.
     /// </summary>

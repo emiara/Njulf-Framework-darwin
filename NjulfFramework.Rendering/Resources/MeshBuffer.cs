@@ -34,6 +34,7 @@ public class MeshBuffer : IDisposable
     private readonly List<uint> _meshletVertexIndices = new();
     private readonly Vk _vk;
     private bool _finalized;
+    private Fence _oldBufferFence;
     private Buffer _indexBuffer;
 
     /// <summary> Whether the mesh buffer has been finalized. </summary>
@@ -151,6 +152,30 @@ public class MeshBuffer : IDisposable
     public void ClearOldBufferHandles()
     {
         OldBufferHandles = (null, null, null, null, null);
+        _oldBufferFence = default;
+    }
+
+    /// <summary>
+    /// Set the fence associated with old buffers for tracking when they can be safely deleted.
+    /// </summary>
+    public void SetOldBufferFence(Fence fence) => _oldBufferFence = fence;
+
+    /// <summary>
+    /// Whether there are old buffers pending deletion (old handles exist and fence is set).
+    /// </summary>
+    public bool HasOldBuffersPendingDeletion =>
+        OldBufferHandles.Vertex.HasValue || OldBufferHandles.Index.HasValue ||
+        OldBufferHandles.Meshlet.HasValue || OldBufferHandles.MeshletVertexIndices.HasValue ||
+        OldBufferHandles.MeshletTriangleIndices.HasValue;
+
+    /// <summary>
+    /// Check if all old buffer fences have signaled (safe to update bindless heap).
+    /// </summary>
+    public bool OldBufferFencesAllSignaled(Vk vk, Device device)
+    {
+        if (_oldBufferFence.Handle == 0) return true;
+        var result = vk.GetFenceStatus(device, _oldBufferFence);
+        return result == Result.Success;
     }
 
     /// <summary>

@@ -47,9 +47,12 @@ layout(push_constant) uniform PushConstants
     uint instanceBufferIndex;
     uint meshletDrawBufferIndex;
     uint meshletDrawCount;
-    uint pad0;
-    uint pad1;
+    uint FrameIndex;
+    uint MaxFramesInFlight;
 } pc;
+
+// Double-buffered buffer access: add FrameIndex offset to per-frame buffers
+#define DB_BO(f) (buffers[(f) + pc.FrameIndex])
 
 // ============================================================================
 // Structures (must match GPU side)
@@ -153,22 +156,22 @@ GPULight getLight(uint lightIdx)
 {
     uint baseOffset = lightIdx * 12u;
     vec4 positionRadius = vec4(
-    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 0u]),
-    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 1u]),
-    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 2u]),
-    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 3u])
+    uintBitsToFloat(DB_BO(pc.lightBufferIndex).data[baseOffset + 0u]),
+    uintBitsToFloat(DB_BO(pc.lightBufferIndex).data[baseOffset + 1u]),
+    uintBitsToFloat(DB_BO(pc.lightBufferIndex).data[baseOffset + 2u]),
+    uintBitsToFloat(DB_BO(pc.lightBufferIndex).data[baseOffset + 3u])
     );
     vec4 colorIntensity = vec4(
-    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 4u]),
-    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 5u]),
-    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 6u]),
-    uintBitsToFloat(buffers[pc.lightBufferIndex].data[baseOffset + 7u])
+    uintBitsToFloat(DB_BO(pc.lightBufferIndex).data[baseOffset + 4u]),
+    uintBitsToFloat(DB_BO(pc.lightBufferIndex).data[baseOffset + 5u]),
+    uintBitsToFloat(DB_BO(pc.lightBufferIndex).data[baseOffset + 6u]),
+    uintBitsToFloat(DB_BO(pc.lightBufferIndex).data[baseOffset + 7u])
     );
     uvec4 lightTypeData = uvec4(
-    buffers[pc.lightBufferIndex].data[baseOffset + 8u],
-    buffers[pc.lightBufferIndex].data[baseOffset + 9u],
-    buffers[pc.lightBufferIndex].data[baseOffset + 10u],
-    buffers[pc.lightBufferIndex].data[baseOffset + 11u]
+    DB_BO(pc.lightBufferIndex).data[baseOffset + 8u],
+    DB_BO(pc.lightBufferIndex).data[baseOffset + 9u],
+    DB_BO(pc.lightBufferIndex).data[baseOffset + 10u],
+    DB_BO(pc.lightBufferIndex).data[baseOffset + 11u]
     );
     return GPULight(positionRadius, colorIntensity, lightTypeData);
 }
@@ -176,14 +179,14 @@ GPULight getLight(uint lightIdx)
 TiledLightHeader getTiledLightHeader(uint tileIdx)
 {
     TiledLightHeader header;
-    header.lightListOffset = buffers[pc.tiledLightHeaderBufferIndex].data[tileIdx * 2u];
-    header.lightCount = buffers[pc.tiledLightHeaderBufferIndex].data[tileIdx * 2u + 1u];
+    header.lightListOffset = DB_BO(pc.tiledLightHeaderBufferIndex).data[tileIdx * 2u];
+    header.lightCount = DB_BO(pc.tiledLightHeaderBufferIndex).data[tileIdx * 2u + 1u];
     return header;
 }
 
 uint getLightIndex(uint globalIdx)
 {
-    return buffers[pc.tiledLightIndicesBufferIndex].data[globalIdx];
+    return DB_BO(pc.tiledLightIndicesBufferIndex).data[globalIdx];
 }
 
 // ============================================================================

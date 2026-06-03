@@ -38,8 +38,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     private readonly Dictionary<string, Data.RenderingData.RenderObject> _renderObjects = new();
     private readonly Dictionary<string, List<string>> _modelToRenderObjectNames = new();
     private readonly ConcurrentQueue<ScenePayload> _scenePayloadQueue = new();
-    private readonly Dictionary<uint, List<Action>> _deletionQueue = new();
-    private uint _meshBuffersDeleteAfterFrame = uint.MaxValue;
+    private FenceBasedBufferDeleter? _bufferDeleter;
 
     private SceneDataBuilder? _sceneBuilder;
 
@@ -67,13 +66,17 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
 
 
     // Phase 3.5: Mesh buffer bindless indices (indices 3-7 in buffer heap)
+    // Static buffers (single instance, not double-buffered):
     private uint _vertexBufferBindlessIndex = 3;
     private uint _indexBufferBindlessIndex = 4;
     private uint _meshletBufferBindlessIndex = 5;
     private uint _meshletVertexIndexBufferBindlessIndex = 6;
     private uint _meshletTriangleIndexBufferBindlessIndex = 7;
+    // Double-buffered per-frame buffers (2 indices each):
+    // Instance: 8 (frame 0), 9 (frame 1)
+    // MeshletDraw: 10 (frame 0), 11 (frame 1)
     private uint _instanceBufferBindlessIndex = 8;
-    private uint _meshletDrawBufferBindlessIndex = 9;
+    private uint _meshletDrawBufferBindlessIndex = 10;
     private MeshManager? _meshManager;
     private MeshPipeline? _meshPipeline;
 
@@ -82,8 +85,9 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     private Buffer _sceneMeshBuffer;
 
     private Buffer _sceneObjectBuffer;
-    private Buffer _instanceBuffer;
-    private Buffer _meshletDrawBuffer;
+    private Buffer[] _instanceBuffers = new Buffer[2];
+    private Buffer[] _meshletDrawBuffers = new Buffer[2];
+    private int _currentSceneBufferIndex = 0;
     private Sampler _defaultSampler;
 
     private SurfaceKHR _surface;
@@ -100,6 +104,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         _vulkanContext = new VulkanContext(enableValidationLayers: true);
         _bufferManager = new BufferManager(_vulkanContext.VulkanApi, _vulkanContext.VmaAllocator);
         _frameUploadRing = new FrameUploadRing(_bufferManager);
+        _bufferDeleter = new FenceBasedBufferDeleter(_vulkanContext.VulkanApi, _vulkanContext.Device, _bufferManager);
     }
 
     public VulkanContext VulkanContext => _vulkanContext!;
@@ -335,9 +340,16 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             _bindlessHeap.UpdateBuffer(0, _sceneObjectBuffer, 16 * 1024 * 1024); // Object buffer at index 0
             _bindlessHeap.UpdateBuffer(1, _sceneMaterialBuffer, 4 * 1024 * 1024); // Material buffer at index 1
             _bindlessHeap.UpdateBuffer(2, _sceneMeshBuffer, 8 * 1024 * 1024); // Mesh buffer at index 2
-            _bindlessHeap.UpdateBuffer(_instanceBufferBindlessIndex, _instanceBuffer, 16 * 1024 * 1024);
-            _bindlessHeap.UpdateBuffer(_meshletDrawBufferBindlessIndex, _meshletDrawBuffer, 32 * 1024 * 1024);
-            Console.WriteLine("✓ Scene buffers registered in bindless heap");
+            
+            // Register double-buffered instance and meshlet draw buffers
+            // Frame 0 at base index, Frame 1 at base index + 1
+            for (uint i = 0; i < MaxFramesInFlight; i++)
+            {
+                _bindlessHeap.UpdateBuffer(_instanceBufferBindlessIndex + i, _instanceBuffers[i], 16 * 1024 * 1024);
+                _bindlessHeap.UpdateBuffer(_meshletDrawBufferBindlessIndex + i, _meshletDrawBuffers[i], 32 * 1024 * 1024);
+            }
+            
+            Console.WriteLine("✓ Scene buffers registered in bindless heap with double buffering");
 
             _meshPipeline = new MeshPipeline(
                 _vulkanContext.VulkanApi,
@@ -590,13 +602,17 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         const ulong instanceBufferSize = 16 * 1024 * 1024;   // 16 MB instances
         const ulong meshletDrawBufferSize = 32 * 1024 * 1024; // 32 MB (instance,meshlet) pairs
 
-        var instanceHandle = _bufferManager.AllocateBuffer(
-            instanceBufferSize, storageUsage, MemoryUsage.AutoPreferDevice);
-        var meshletDrawHandle = _bufferManager.AllocateBuffer(
-            meshletDrawBufferSize, storageUsage, MemoryUsage.AutoPreferDevice);
-
-        _instanceBuffer = _bufferManager.GetBuffer(instanceHandle);
-        _meshletDrawBuffer = _bufferManager.GetBuffer(meshletDrawHandle);
+        // Allocate double-buffered instance and meshlet draw buffers
+        for (uint i = 0; i < MaxFramesInFlight; i++)
+        {
+            var instanceHandle = _bufferManager.AllocateBuffer(
+                instanceBufferSize, storageUsage, MemoryUsage.AutoPreferDevice);
+            var meshletDrawHandle = _bufferManager.AllocateBuffer(
+                meshletDrawBufferSize, storageUsage, MemoryUsage.AutoPreferDevice);
+            
+            _instanceBuffers[i] = _bufferManager.GetBuffer(instanceHandle);
+            _meshletDrawBuffers[i] = _bufferManager.GetBuffer(meshletDrawHandle);
+        }
     }
 
 
@@ -703,8 +719,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             _vulkanContext.VulkanApi,
             transferCommandBuffer,
             _frameUploadRing,
-            _instanceBuffer,
-            _meshletDrawBuffer);
+            _instanceBuffers[frameIndex],
+            _meshletDrawBuffers[frameIndex]);
 
             // Phase 3.5: Upload lights
             _lightManagerImpl?.UploadToGPU(transferCommandBuffer, _frameUploadRing);
@@ -805,94 +821,79 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     }
 
     /// <summary>
-    /// Queue a buffer handle for deferred deletion.
-    /// Buffers are deleted after MaxFramesInFlight frames to ensure GPU is done with them.
+    /// Queue a buffer handle for fence-based deletion.
+    /// Buffers are deleted when the associated fence signals, ensuring GPU is done with them.
     /// </summary>
-    private void QueueBufferDeletion(BufferHandle? handle, uint deleteAfterFrame)
+    private void QueueBufferDeletion(BufferHandle? handle, Fence fence)
     {
         if (!handle.HasValue || !handle.Value.IsValid) return;
-        
-        if (!_deletionQueue.TryGetValue(deleteAfterFrame, out var actions))
-        {
-            actions = new List<Action>();
-            _deletionQueue[deleteAfterFrame] = actions;
-        }
-        actions.Add(() => _bufferManager?.FreeBuffer(handle.Value));
+        _bufferDeleter?.Track(handle.Value, fence);
     }
 
     /// <summary>
     /// Flush the deletion queue for frames that have completed.
     /// Called each frame to clean up resources that are no longer in use by the GPU.
+    /// Uses fence-based resource lifecycle management for proper synchronization.
     /// </summary>
     private void FlushDeletionQueue()
     {
-        uint current = _currentFrameIndex;
-        var keysToRemove = new List<uint>();
-        
-        foreach (var kvp in _deletionQueue)
-        {
-            if (kvp.Key <= current)
-            {
-                foreach (var action in kvp.Value)
-                    action();
-                keysToRemove.Add(kvp.Key);
-            }
-        }
-        
-        foreach (var key in keysToRemove)
-            _deletionQueue.Remove(key);
+        // Clean up buffers whose fences have signaled
+        _bufferDeleter?.Cleanup();
         
         // Check if we need to update bindless heap after mesh buffer re-finalization
-        // Mesh buffers were queued for deletion at _meshBuffersDeleteAfterFrame
-        // Once currentFrame >= _meshBuffersDeleteAfterFrame, all in-flight frames that could
-        // reference the old buffers have completed, so it's safe to update the bindless heap
-        if (_meshBuffersDeleteAfterFrame != uint.MaxValue && current >= _meshBuffersDeleteAfterFrame)
+        // With fence-based tracking, we check if all old buffer fences have signaled
+        if (_meshManager != null && _meshManager.HasOldBuffersPendingDeletion)
         {
-            // All frames that could have referenced the old mesh buffers have completed
-            RegisterMeshBuffersInBindlessHeap();
-            _meshBuffersDeleteAfterFrame = uint.MaxValue;
-            Console.WriteLine("✓ Bindless heap updated with new mesh buffers (frame " + current + ")");
+            if (_meshManager.OldBufferFencesAllSignaled(_vulkanContext!.VulkanApi, _vulkanContext.Device))
+            {
+                // All fences for old mesh buffers have signaled - safe to update bindless heap
+                RegisterMeshBuffersInBindlessHeap();
+                _meshManager.ClearOldBufferHandles();
+                Console.WriteLine("✓ Bindless heap updated with new mesh buffers (fence-based)");
+            }
         }
     }
 
     /// <summary>
     ///     Re-finalizes the mesh manager. Bindless heap update is deferred until old buffers are safe.
     ///     Call this after adding new render objects post-Load().
+    ///     Uses fence-based resource lifecycle management for proper synchronization.
     /// </summary>
     public void FinalizeAndUpdateMeshBuffers()
     {
-        if (_meshManager == null || _vulkanContext == null || _bindlessHeap == null) return;
+        if (_meshManager == null || _vulkanContext == null || _bindlessHeap == null || _synchronizationManager == null) return;
         
         // Check if we're re-finalizing (old buffers exist)
         if (_meshManager.IsFinalized)
         {
-            // Queue old buffers for deferred deletion
-            // They'll be deleted after MaxFramesInFlight frames
+            // Queue old buffers for fence-based deletion
+            // They'll be deleted when the in-flight fence signals
             var oldHandles = _meshManager.OldBufferHandles;
-            _meshBuffersDeleteAfterFrame = _currentFrameIndex + MaxFramesInFlight;
+            var frameIndex = _currentFrameIndex % MaxFramesInFlight;
+            var inFlightFence = _synchronizationManager.InFlightFences[frameIndex];
             
-            QueueBufferDeletion(oldHandles.Vertex, _meshBuffersDeleteAfterFrame);
-            QueueBufferDeletion(oldHandles.Index, _meshBuffersDeleteAfterFrame);
-            QueueBufferDeletion(oldHandles.Meshlet, _meshBuffersDeleteAfterFrame);
-            QueueBufferDeletion(oldHandles.MeshletVertexIndices, _meshBuffersDeleteAfterFrame);
-            QueueBufferDeletion(oldHandles.MeshletTriangleIndices, _meshBuffersDeleteAfterFrame);
+            QueueBufferDeletion(oldHandles.Vertex, inFlightFence);
+            QueueBufferDeletion(oldHandles.Index, inFlightFence);
+            QueueBufferDeletion(oldHandles.Meshlet, inFlightFence);
+            QueueBufferDeletion(oldHandles.MeshletVertexIndices, inFlightFence);
+            QueueBufferDeletion(oldHandles.MeshletTriangleIndices, inFlightFence);
             
-            // Clear old handles so they aren't queued again
-            _meshManager.ClearOldBufferHandles();
+            // Track the fence in mesh manager for bindless heap update timing
+            _meshManager.SetOldBufferFence(inFlightFence);
         }
         
         _meshManager.FinalizeOrReFinalize();
         
         // Only update bindless heap if this is the first finalization (no old buffers in flight)
-        // For re-finalization, the bindless heap update is deferred to after old buffers are deleted
-        if (!_meshManager.IsFinalized || _meshBuffersDeleteAfterFrame == uint.MaxValue)
+        // For re-finalization, the bindless heap update is deferred to FlushDeletionQueue after fence signals
+        if (!_meshManager.IsFinalized || !_meshManager.HasOldBuffersPendingDeletion)
         {
             RegisterMeshBuffersInBindlessHeap();
             Console.WriteLine("✓ Mesh buffers finalized and registered in bindless heap");
         }
         else
         {
-            Console.WriteLine("✓ Mesh buffers re-finalized (bindless heap update deferred until frame " + _meshBuffersDeleteAfterFrame + ")");
+            Console.WriteLine("✓ Mesh buffers re-finalized (bindless heap update deferred until fence signals)");
         }
     }
 

@@ -21,8 +21,8 @@ layout(push_constant) uniform PushConstants
     uint instanceBufferIndex;
     uint meshletDrawBufferIndex;
     uint meshletDrawCount;
-    uint pad0;
-    uint pad1;
+    uint FrameIndex;
+    uint MaxFramesInFlight;
 } pc;
 
 // Payload passed to the mesh shader so it knows which draw it is processing.
@@ -43,26 +43,29 @@ vec4 readVec4(uint baseUint) {
         uintBitsToFloat(buffers[5u].data[baseUint + 3u]));
 }
 
+// Double-buffered buffer access: add FrameIndex offset to per-frame buffers
+#define DB_BO(f) (buffers[(f) + pc.FrameIndex])
+
 // Instance is 80 bytes = 20 uints: model(0-15), materialIndex(16), meshletBaseOffset(17), meshletCount(18), pad(19)
 mat4 getInstanceModel(uint instanceIndex) {
     uint base = instanceIndex * 20u;
     return mat4(
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 0u]),
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 1u]),
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 2u]),
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 3u]),
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 4u]),
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 5u]),
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 6u]),
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 7u]),
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 8u]),
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 9u]),
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 10u]),
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 11u]),
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 12u]),
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 13u]),
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 14u]),
-        uintBitsToFloat(buffers[pc.instanceBufferIndex].data[base + 15u]));
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 0u]),
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 1u]),
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 2u]),
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 3u]),
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 4u]),
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 5u]),
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 6u]),
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 7u]),
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 8u]),
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 9u]),
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 10u]),
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 11u]),
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 12u]),
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 13u]),
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 14u]),
+        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 15u]));
 }
 
 void main()
@@ -74,8 +77,8 @@ void main()
     }
 
     // Meshlet draw entry: 2 uints (instanceIndex, meshletIndex)
-    uint instanceIndex = buffers[pc.meshletDrawBufferIndex].data[drawId * 2u + 0u];
-    uint meshletIndex  = buffers[pc.meshletDrawBufferIndex].data[drawId * 2u + 1u];
+    uint instanceIndex = DB_BO(pc.meshletDrawBufferIndex).data[drawId * 2u + 0u];
+    uint meshletIndex  = DB_BO(pc.meshletDrawBufferIndex).data[drawId * 2u + 1u];
 
     // --- Cone backface culling in world space ---
     uint mBase = meshletIndex * MESHLET_STRIDE;
