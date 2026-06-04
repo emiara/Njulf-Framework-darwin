@@ -185,7 +185,11 @@ public class MeshBuffer : IDisposable
     public void Finalize()
     {
         if (_meshes.Count == 0)
-            throw new InvalidOperationException("No meshes registered");
+        {
+            // Even with no meshes, we need valid handles for bindless registration
+            // Allocate minimal 1-byte buffers to ensure handles are valid
+            Console.WriteLine("Finalizing MeshBuffer with no meshes - allocating minimal buffers");
+        }
 
         if (_finalized)
         {
@@ -216,61 +220,67 @@ public class MeshBuffer : IDisposable
 
         BuildMeshlets();
 
-        // Allocate vertex buffer
-        if (TotalVertices > 0)
-        {
-            var vertexSize = TotalVertices * Marshal.SizeOf<Data.RenderingData.Vertex>();
+        // Allocate vertex buffer - always allocate to ensure valid handle for bindless registration
+        // Minimum 1 byte allocation even with no vertices
+        var vertexSize = TotalVertices * Marshal.SizeOf<Data.RenderingData.Vertex>();
+        if (vertexSize == 0)
+            vertexSize = 1; // Ensure non-zero allocation for valid handle
 
-            VertexBufferHandle = _bufferManager.AllocateBuffer(
-                (ulong)vertexSize,
-                BufferUsageFlags.VertexBufferBit
-                | BufferUsageFlags.StorageBufferBit // For bindless access
-                | BufferUsageFlags.TransferDstBit, // For uploading
-                MemoryUsage.AutoPreferDevice);
+        VertexBufferHandle = _bufferManager.AllocateBuffer(
+            (ulong)vertexSize,
+            BufferUsageFlags.VertexBufferBit
+            | BufferUsageFlags.StorageBufferBit
+            | BufferUsageFlags.TransferDstBit,
+            MemoryUsage.AutoPreferDevice);
+        _vertexBuffer = _bufferManager.GetBuffer(VertexBufferHandle);
+        Console.WriteLine($"✓ Vertex buffer allocated: {vertexSize / (1024.0 * 1024.0):F2} MB");
 
-            _vertexBuffer = _bufferManager.GetBuffer(VertexBufferHandle);
-            Console.WriteLine($"✓ Vertex buffer allocated: {vertexSize / (1024.0 * 1024.0):F2} MB");
-        }
+        // Allocate index buffer - always allocate to ensure valid handle
+        var indexSize = TotalIndices * sizeof(uint);
+        if (indexSize == 0)
+            indexSize = 1; // Ensure non-zero allocation for valid handle
 
-        // Allocate index buffer
-        if (TotalIndices > 0)
-        {
-            var indexSize = TotalIndices * sizeof(uint);
+        IndexBufferHandle = _bufferManager.AllocateBuffer(
+            indexSize,
+            BufferUsageFlags.IndexBufferBit
+            | BufferUsageFlags.StorageBufferBit
+            | BufferUsageFlags.TransferDstBit,
+            MemoryUsage.AutoPreferDevice);
+        _indexBuffer = _bufferManager.GetBuffer(IndexBufferHandle);
+        Console.WriteLine($"✓ Index buffer allocated: {indexSize / (1024.0 * 1024.0):F2} MB");
 
-            IndexBufferHandle = _bufferManager.AllocateBuffer(
-                indexSize,
-                BufferUsageFlags.IndexBufferBit
-                | BufferUsageFlags.StorageBufferBit // For bindless access
-                | BufferUsageFlags.TransferDstBit, // For uploading
-                MemoryUsage.AutoPreferDevice);
+        // Allocate meshlet buffers - always allocate to ensure valid handles
+        var meshletSize = (ulong)(_meshlets.Count * Marshal.SizeOf<GPUMeshlet>());
+        if (meshletSize == 0)
+            meshletSize = 1; // Ensure non-zero allocation for valid handle
 
-            _indexBuffer = _bufferManager.GetBuffer(IndexBufferHandle);
-            Console.WriteLine($"✓ Index buffer allocated: {indexSize / (1024.0 * 1024.0):F2} MB");
-        }
+        MeshletBufferHandle = _bufferManager.AllocateBuffer(
+            meshletSize,
+            BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
+            MemoryUsage.AutoPreferDevice);
+        MeshletBuffer = _bufferManager.GetBuffer(MeshletBufferHandle);
 
-        if (_meshlets.Count > 0)
-        {
-            var meshletSize = (ulong)(_meshlets.Count * Marshal.SizeOf<GPUMeshlet>());
-            MeshletBufferHandle = _bufferManager.AllocateBuffer(
-                meshletSize,
-                BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
-                MemoryUsage.AutoPreferDevice);
-            MeshletBuffer = _bufferManager.GetBuffer(MeshletBufferHandle);
+        var meshletVertexIndexSize = (ulong)(_meshletVertexIndices.Count * sizeof(uint));
+        if (meshletVertexIndexSize == 0)
+            meshletVertexIndexSize = 1; // Ensure non-zero allocation for valid handle
 
-            var meshletVertexIndexSize = (ulong)(_meshletVertexIndices.Count * sizeof(uint));
-            MeshletVertexIndicesBufferHandle = _bufferManager.AllocateBuffer(
-                meshletVertexIndexSize,
-                BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
-                MemoryUsage.AutoPreferDevice);
-            MeshletVertexIndicesBuffer = _bufferManager.GetBuffer(MeshletVertexIndicesBufferHandle);
+        MeshletVertexIndicesBufferHandle = _bufferManager.AllocateBuffer(
+            meshletVertexIndexSize,
+            BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
+            MemoryUsage.AutoPreferDevice);
+        MeshletVertexIndicesBuffer = _bufferManager.GetBuffer(MeshletVertexIndicesBufferHandle);
 
-            var meshletTriangleIndexSize = (ulong)(_meshletTriangleIndices.Count * sizeof(uint));
-            MeshletTriangleIndicesBufferHandle = _bufferManager.AllocateBuffer(
-                meshletTriangleIndexSize,
-                BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
-                MemoryUsage.AutoPreferDevice);
-            MeshletTriangleIndicesBuffer = _bufferManager.GetBuffer(MeshletTriangleIndicesBufferHandle);
-        }
+        var meshletTriangleIndexSize = (ulong)(_meshletTriangleIndices.Count * sizeof(uint));
+        if (meshletTriangleIndexSize == 0)
+            meshletTriangleIndexSize = 1; // Ensure non-zero allocation for valid handle
+
+        MeshletTriangleIndicesBufferHandle = _bufferManager.AllocateBuffer(
+            meshletTriangleIndexSize,
+            BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
+            MemoryUsage.AutoPreferDevice);
+        MeshletTriangleIndicesBuffer = _bufferManager.GetBuffer(MeshletTriangleIndicesBufferHandle);
+
+        Console.WriteLine($"✓ Meshlet buffers allocated: vertices={meshletVertexIndexSize} bytes, triangles={meshletTriangleIndexSize} bytes");
 
         _finalized = true;
     }

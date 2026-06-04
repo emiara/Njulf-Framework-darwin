@@ -30,6 +30,8 @@ internal sealed class RendererExample : GameFramework
     private bool _isMouseLookActive = false;
     private float _yaw = 0f;
     private float _pitch = 0f;
+    private float _diagnosticTimer = 0f;
+    private const float DiagnosticInterval = 1.0f; // Check mesh buffer status once per second
 
     private static void Main(string[] args) => new RendererExample().Run();
 
@@ -54,6 +56,17 @@ internal sealed class RendererExample : GameFramework
     {
         // Load the model - it's automatically added to the scene
         _model = Content?.Load<IModel>(GltfModelPath) as NjulfFramework.Assets.Models.FrameworkModel;
+        
+        // Debug: Validate model loading
+        if (_model == null)
+        {
+            Console.WriteLine("[CRITICAL] Model failed to load! Check path: " + GltfModelPath);
+        }
+        else
+        {
+            Console.WriteLine($"[OK] Model '{_model.Name}' loaded: {_model.Meshes.Count} mesh(es)");
+        }
+        
         _model?.SetPosition(new Vector3(0, 0, 0));
 
         // Directly access the camera from the framework
@@ -125,6 +138,16 @@ internal sealed class RendererExample : GameFramework
 
     public override void Update(float deltaTime)
     {
+        VulkanRenderer? vulkanRenderer = Renderer as VulkanRenderer;
+        
+        // Debug: Validate mesh buffer status (check once per second)
+        _diagnosticTimer += deltaTime;
+        if (_diagnosticTimer >= DiagnosticInterval && vulkanRenderer != null)
+        {
+            ValidateMeshBufferStatus(vulkanRenderer);
+            _diagnosticTimer = 0f;
+        }
+
         // Update input manager
         _inputManager?.Update();
 
@@ -167,8 +190,84 @@ internal sealed class RendererExample : GameFramework
             HandleMouseLook(deltaTime);
         }
 
-        if (Renderer is VulkanRenderer vulkanRenderer)
-            vulkanRenderer.Update(deltaTime);
+        vulkanRenderer?.Update(deltaTime);
+    }
+
+    private void ValidateMeshBufferStatus(VulkanRenderer renderer)
+    {
+        // Industry-standard diagnostic: Check meshlet draw count and buffer registration
+        // This helps identify the grey screen root cause (empty bindless heap buffers)
+        try
+        {
+            var sceneBuilderField = typeof(VulkanRenderer).GetField("_sceneBuilder", 
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            
+            var meshManagerField = typeof(VulkanRenderer).GetField("_meshManager", 
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            
+            if (sceneBuilderField?.GetValue(renderer) is object sceneBuilder)
+            {
+                var meshletDrawCountProp = sceneBuilder.GetType().GetProperty("MeshletDrawCount");
+                if (meshletDrawCountProp != null)
+                {
+                    var drawCount = (uint)meshletDrawCountProp.GetValue(sceneBuilder);
+                    Console.WriteLine($"[DIAG] MeshletDrawCount: {drawCount}");
+                    
+                    if (drawCount == 0)
+                    {
+                        Console.WriteLine("[WARNING] MeshletDrawCount = 0 => No draw calls issued!");
+                        Console.WriteLine("  Root Cause: Meshlet data not generated OR mesh buffers not uploaded");
+                    }
+                }
+            }
+            
+            if (meshManagerField?.GetValue(renderer) is object meshManager)
+            {
+                var isFinalizedProp = meshManager.GetType().GetProperty("IsFinalized");
+                if (isFinalizedProp != null)
+                {
+                    var isFinalized = (bool)isFinalizedProp.GetValue(meshManager);
+                    Console.WriteLine($"[DIAG] MeshManager.Finalized: {isFinalized}");
+                    
+                    if (!isFinalized)
+                    {
+                        Console.WriteLine("[CRITICAL] MeshManager NOT finalized => Buffers not allocated!");
+                        Console.WriteLine("  Action: Call FinalizeAndUpdateMeshBuffers() after loading meshes");
+                    }
+                }
+                
+                var getAllHandlesMethod = meshManager.GetType().GetMethod("GetAllMeshBufferHandles");
+                if (getAllHandlesMethod != null)
+                {
+                    var handles = getAllHandlesMethod.Invoke(meshManager, null);
+                    if (handles != null)
+                    {
+                        var handleType = handles.GetType();
+                        var vertexHandle = handleType.GetProperty("VertexHandle")?.GetValue(handles);
+                        var meshletHandle = handleType.GetProperty("MeshletHandle")?.GetValue(handles);
+                        var meshletVertexHandle = handleType.GetProperty("MeshletVertexIndicesHandle")?.GetValue(handles);
+                        var meshletTriangleHandle = handleType.GetProperty("MeshletTriangleIndicesHandle")?.GetValue(handles);
+                        
+                        Console.WriteLine("[DIAG] Buffer Handles:");
+                        Console.WriteLine($"  VertexBuffer (index 3): {(vertexHandle != null ? "Valid" : "NULL")}");
+                        Console.WriteLine($"  MeshletBuffer (index 5): {(meshletHandle != null ? "Valid" : "NULL")}");
+                        Console.WriteLine($"  MeshletVertexIndexBuffer (index 6): {(meshletVertexHandle != null ? "Valid" : "NULL")}");
+                        Console.WriteLine($"  MeshletTriangleIndexBuffer (index 7): {(meshletTriangleHandle != null ? "Valid" : "NULL")}");
+                        
+                        if (vertexHandle == null || meshletHandle == null || 
+                            meshletVertexHandle == null || meshletTriangleHandle == null)
+                        {
+                            Console.WriteLine("[CRITICAL] One or more mesh buffers are NULL!");
+                            Console.WriteLine("  Grey screen cause: Buffers at bindless indices 3,5,6,7 contain zero-initialized data");
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DIAG ERROR] {ex.Message}");
+        }
     }
 
     private void HandleMouseLook(float deltaTime)

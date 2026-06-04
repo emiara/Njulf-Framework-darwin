@@ -915,17 +915,28 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     /// <summary>
     ///     Register mesh buffers in the bindless descriptor heap at fixed indices.
     ///     Uses centralized constants from BindlessBufferIndices.
-    ///     Only registers buffers that have been allocated (handles non-empty mesh case).
+    ///     Buffers are always allocated during Finalize() to ensure valid handles exist.
     /// </summary>
     private void RegisterMeshBuffersInBindlessHeap()
     {
         if (_meshManager == null || _bindlessHeap == null || _bufferManager == null) return;
 
-        // Get all buffer handles
+        // Get all buffer handles - all should be valid after Finalize() due to minimum 1-byte allocations
         var allHandles = _meshManager.GetAllMeshBufferHandles();
 
-        // Check if mesh buffers have been allocated (only true after FinalizeOrReFinalize with meshes)
-        if (!allHandles.VertexHandle.IsValid) return;
+        // Validate that all required handles are valid before proceeding
+        if (!allHandles.VertexHandle.IsValid || !allHandles.IndexHandle.IsValid ||
+            !allHandles.MeshletHandle.IsValid || !allHandles.MeshletVertexIndicesHandle.IsValid ||
+            !allHandles.MeshletTriangleIndicesHandle.IsValid)
+        {
+            // Log which buffers are missing for debugging
+            if (!allHandles.VertexHandle.IsValid) Console.WriteLine("[ERROR] Vertex buffer handle is invalid");
+            if (!allHandles.IndexHandle.IsValid) Console.WriteLine("[ERROR] Index buffer handle is invalid");
+            if (!allHandles.MeshletHandle.IsValid) Console.WriteLine("[ERROR] Meshlet buffer handle is invalid");
+            if (!allHandles.MeshletVertexIndicesHandle.IsValid) Console.WriteLine("[ERROR] Meshlet vertex indices buffer handle is invalid");
+            if (!allHandles.MeshletTriangleIndicesHandle.IsValid) Console.WriteLine("[ERROR] Meshlet triangle indices buffer handle is invalid");
+            return;
+        }
 
         // Get mesh buffers
         var (vertexBuffer, indexBuffer) = _meshManager.GetMeshBuffers();
