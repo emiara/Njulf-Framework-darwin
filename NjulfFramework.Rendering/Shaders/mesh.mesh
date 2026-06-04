@@ -26,6 +26,10 @@ layout(push_constant) uniform PushConstants
     uint meshletDrawCount;
     uint FrameIndex;
     uint MaxFramesInFlight;
+    uint VertexBufferIndex;      
+    uint MeshletBufferIndex;     
+    uint MeshletVertexIndexBufferIndex;  
+    uint MeshletTriangleIndexBufferIndex;
 } pc;
 
 // Double-buffered buffer access: add FrameIndex offset to per-frame buffers
@@ -44,7 +48,7 @@ const uint MESHLET_STRIDE = 24u; // 96 bytes
 const uint INSTANCE_STRIDE = 20u; // 80 bytes
 
 uint meshletField(uint meshletIndex, uint field) {
-    return buffers[5u].data[meshletIndex * MESHLET_STRIDE + field];
+    return buffers[pc.MeshletBufferIndex].data[meshletIndex * MESHLET_STRIDE + field];
 }
 
 mat4 getInstanceModel(uint instanceIndex) {
@@ -63,16 +67,16 @@ void unpackVertex(uint vertexIndex, out vec3 position, out vec3 normal, out vec2
 {
     uint base = vertexIndex * 8u; // 32-byte vertex
     position = vec3(
-        uintBitsToFloat(buffers[3u].data[base + 0u]),
-        uintBitsToFloat(buffers[3u].data[base + 1u]),
-        uintBitsToFloat(buffers[3u].data[base + 2u]));
+        uintBitsToFloat(buffers[pc.VertexBufferIndex].data[base + 0u]),
+        uintBitsToFloat(buffers[pc.VertexBufferIndex].data[base + 1u]),
+        uintBitsToFloat(buffers[pc.VertexBufferIndex].data[base + 2u]));
     normal = vec3(
-        uintBitsToFloat(buffers[3u].data[base + 3u]),
-        uintBitsToFloat(buffers[3u].data[base + 4u]),
-        uintBitsToFloat(buffers[3u].data[base + 5u]));
+        uintBitsToFloat(buffers[pc.VertexBufferIndex].data[base + 3u]),
+        uintBitsToFloat(buffers[pc.VertexBufferIndex].data[base + 4u]),
+        uintBitsToFloat(buffers[pc.VertexBufferIndex].data[base + 5u]));
     texCoord = vec2(
-        uintBitsToFloat(buffers[3u].data[base + 6u]),
-        1.0 - uintBitsToFloat(buffers[3u].data[base + 7u]));
+        uintBitsToFloat(buffers[pc.VertexBufferIndex].data[base + 6u]),
+        1.0 - uintBitsToFloat(buffers[pc.VertexBufferIndex].data[base + 7u]));
 }
 
 void main()
@@ -100,7 +104,7 @@ void main()
     if (localIndex < vertexCount)
     {
         // meshlet vertex index is mesh-LOCAL; add the meshlet's baked baseVertex.
-        uint meshLocalVertex = buffers[6u].data[vertexOffset + localIndex];
+        uint meshLocalVertex = buffers[pc.MeshletVertexIndexBufferIndex].data[vertexOffset + localIndex];
         uint globalVertexIndex = baseVertex + meshLocalVertex;
 
         vec3 pos; vec3 normal; vec2 uv;
@@ -117,9 +121,9 @@ void main()
     if (localIndex < triangleCount)
     {
         uint triBase = triangleOffset + localIndex * 3u;
-        uint l0 = buffers[7u].data[triBase + 0u];
-        uint l1 = buffers[7u].data[triBase + 1u];
-        uint l2 = buffers[7u].data[triBase + 2u];
+        uint l0 = buffers[pc.MeshletTriangleIndexBufferIndex].data[triBase + 0u];
+        uint l1 = buffers[pc.MeshletTriangleIndexBufferIndex].data[triBase + 1u];
+        uint l2 = buffers[pc.MeshletTriangleIndexBufferIndex].data[triBase + 2u];
         gl_PrimitiveTriangleIndicesEXT[localIndex] = uvec3(l0, l1, l2);
     }
 }

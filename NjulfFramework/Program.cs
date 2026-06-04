@@ -57,7 +57,7 @@ internal sealed class RendererExample : GameFramework
         _model?.SetPosition(new Vector3(0, 0, 0));
 
         // Directly access the camera from the framework
-        Camera?.SetPosition(new Vector3(0, 0, -10));
+        Camera?.SetPosition(new Vector3(0, 0, 0));
 
         // Get input manager from the service provider using reflection
         // (since _serviceProvider is private in GameFramework)

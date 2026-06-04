@@ -284,6 +284,11 @@ public class RenderingData
         public uint MeshletDrawCount;
         public uint FrameIndex;
         public uint MaxFramesInFlight;
+        
+        public uint VertexBufferIndex;
+        public uint MeshletBufferIndex;
+        public uint MeshletVertexIndexBufferIndex;
+        public uint MeshletTriangleIndexBufferIndex;
 
         public static uint SizeInBytes => (uint)Marshal.SizeOf<PushConstants>();
     }
