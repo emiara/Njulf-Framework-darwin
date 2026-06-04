@@ -70,7 +70,6 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     // These values must match BindlessBufferIndices.cs and shader expectations
     private MeshManager? _meshManager;
     private MeshPipeline? _meshPipeline;
-    private bool _meshBuffersNeedBindlessRegistration = false;
 
     private RenderGraph? _renderGraph;
     private Buffer _sceneMaterialBuffer;
@@ -347,8 +346,14 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
                 _bindlessHeap.UpdateBuffer(MeshletDrawBufferBase + i, _meshletDrawBuffers[i], 32 * 1024 * 1024);
             }
 
+            // Pre-register mesh buffers with minimal size - will be updated when models are loaded
+            // This ensures bindless indices 3,5,6,7 always have valid buffers
+            RegisterMeshBuffersInBindlessHeap();
+
             Console.WriteLine("✓ Scene buffers registered in bindless heap with double buffering");
 
+            // Industry standard: Dispose existing pipeline before recreating to ensure push constant range matches current struct size
+            _meshPipeline?.Dispose();
             _meshPipeline = new MeshPipeline(
                 _vulkanContext.VulkanApi,
                 _vulkanContext.Device,
@@ -358,7 +363,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
                     _descriptorSetLayouts.TextureHeapLayout  // Set 1
                 },
                 _swapchainManager.SwapchainImageFormat);
-            Console.WriteLine("✓ Mesh pipeline created (using bindless sets 0 and 1)");
+            Console.WriteLine("✓ Mesh pipeline created (using bindless sets 0 and 1, push constant size: " + Data.RenderingData.PushConstants.SizeInBytes + " bytes)");
 
                 // Phase 3.5: Initialize light manager
                 _lightManagerImpl = new LightManager(
@@ -702,13 +707,6 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             if (renderObject?.Mesh != null)
                 _meshManager.UploadMeshToGPU(renderObject.Mesh, transferCommandBuffer, _frameUploadRing);
 
-        // Register mesh buffers in bindless heap after first upload (fixes use-of-uninitialized-buffer race)
-        if (_meshBuffersNeedBindlessRegistration)
-        {
-            RegisterMeshBuffersInBindlessHeap();
-            _meshBuffersNeedBindlessRegistration = false;
-        }
-
         // Write CPU scene data to staging buffer and record copy commands
         // Use QFOT (Queue Family Ownership Transfer) for proper texture synchronization
         _sceneBuilder.UploadToGPU(
@@ -900,12 +898,12 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         
         _meshManager.FinalizeOrReFinalize();
         
-        // Only update bindless heap if this is the first finalization (no old buffers in flight)
-        // For re-finalization, the bindless heap update is deferred to FlushDeletionQueue after fence signals
+        // Industry standard: Register buffers immediately after finalization
+        // This ensures mesh buffers are available for rendering without requiring user intervention
         if (!wasAlreadyFinalized || !_meshManager.HasOldBuffersPendingDeletion)
         {
-            _meshBuffersNeedBindlessRegistration = true;
-            Console.WriteLine("✓ Mesh buffers finalized (bindless heap registration deferred until after first upload)");
+            RegisterMeshBuffersInBindlessHeap();
+            Console.WriteLine("✓ Mesh buffers finalized and registered in bindless heap");
         }
         else
         {
@@ -916,50 +914,81 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     /// <summary>
     ///     Register mesh buffers in the bindless descriptor heap at fixed indices.
     ///     Uses centralized constants from BindlessBufferIndices.
-    ///     Buffers are always allocated during Finalize() to ensure valid handles exist.
+    ///     Buffers are allocated during Finalize() to ensure valid handles exist.
+    ///     If called before finalization, registers with minimal 1-byte buffers.
     /// </summary>
     private void RegisterMeshBuffersInBindlessHeap()
     {
         if (_meshManager == null || _bindlessHeap == null || _bufferManager == null) return;
 
-        // Get all buffer handles - all should be valid after Finalize() due to minimum 1-byte allocations
+        // Get all buffer handles
         var allHandles = _meshManager.GetAllMeshBufferHandles();
 
-        // Validate that all required handles are valid before proceeding
-        if (!allHandles.VertexHandle.IsValid || !allHandles.IndexHandle.IsValid ||
-            !allHandles.MeshletHandle.IsValid || !allHandles.MeshletVertexIndicesHandle.IsValid ||
-            !allHandles.MeshletTriangleIndicesHandle.IsValid)
+        // Check if mesh manager has been finalized (buffers allocated)
+        bool isFinalized = _meshManager.IsFinalized;
+        
+        if (isFinalized)
         {
-            // Log which buffers are missing for debugging
-            if (!allHandles.VertexHandle.IsValid) Console.WriteLine("[ERROR] Vertex buffer handle is invalid");
-            if (!allHandles.IndexHandle.IsValid) Console.WriteLine("[ERROR] Index buffer handle is invalid");
-            if (!allHandles.MeshletHandle.IsValid) Console.WriteLine("[ERROR] Meshlet buffer handle is invalid");
-            if (!allHandles.MeshletVertexIndicesHandle.IsValid) Console.WriteLine("[ERROR] Meshlet vertex indices buffer handle is invalid");
-            if (!allHandles.MeshletTriangleIndicesHandle.IsValid) Console.WriteLine("[ERROR] Meshlet triangle indices buffer handle is invalid");
-            return;
+            // Validate that all required handles are valid
+            if (!allHandles.VertexHandle.IsValid || !allHandles.IndexHandle.IsValid ||
+                !allHandles.MeshletHandle.IsValid || !allHandles.MeshletVertexIndicesHandle.IsValid ||
+                !allHandles.MeshletTriangleIndicesHandle.IsValid)
+            {
+                // Log which buffers are missing for debugging
+                if (!allHandles.VertexHandle.IsValid) Console.WriteLine("[ERROR] Vertex buffer handle is invalid");
+                if (!allHandles.IndexHandle.IsValid) Console.WriteLine("[ERROR] Index buffer handle is invalid");
+                if (!allHandles.MeshletHandle.IsValid) Console.WriteLine("[ERROR] Meshlet buffer handle is invalid");
+                if (!allHandles.MeshletVertexIndicesHandle.IsValid) Console.WriteLine("[ERROR] Meshlet vertex indices buffer handle is invalid");
+                if (!allHandles.MeshletTriangleIndicesHandle.IsValid) Console.WriteLine("[ERROR] Meshlet triangle indices buffer handle is invalid");
+                return;
+            }
+
+            // Get mesh buffers
+            var (vertexBuffer, indexBuffer) = _meshManager.GetMeshBuffers();
+            var (meshletBuffer, meshletVertexIndicesBuffer, meshletTriangleIndicesBuffer) =
+                _meshManager.GetMeshletBuffers();
+
+            // Get buffer sizes from BufferManager
+            var vertexSize = _bufferManager.GetBufferSize(allHandles.VertexHandle);
+            var indexSize = _bufferManager.GetBufferSize(allHandles.IndexHandle);
+            var meshletSize = _bufferManager.GetBufferSize(allHandles.MeshletHandle);
+            var meshletVertexIndexSize = _bufferManager.GetBufferSize(allHandles.MeshletVertexIndicesHandle);
+            var meshletTriangleIndexSize = _bufferManager.GetBufferSize(allHandles.MeshletTriangleIndicesHandle);
+
+            // Register with bindless heap at fixed indices defined in BindlessBufferIndices
+            _bindlessHeap.UpdateBuffer(VertexBuffer, vertexBuffer, vertexSize);
+            _bindlessHeap.UpdateBuffer(IndexBuffer, indexBuffer, indexSize);
+            _bindlessHeap.UpdateBuffer(MeshletBuffer, meshletBuffer, meshletSize);
+            _bindlessHeap.UpdateBuffer(MeshletVertexIndexBuffer, meshletVertexIndicesBuffer, meshletVertexIndexSize);
+            _bindlessHeap.UpdateBuffer(MeshletTriangleIndexBuffer, meshletTriangleIndicesBuffer, meshletTriangleIndexSize);
+
+            Console.WriteLine("✓ Mesh buffers registered in bindless heap");
         }
+        else
+        {
+            // Pre-registration before finalization: create minimal 1-byte buffers to reserve bindless indices
+            // This prevents zero-initialized data in bindless heap slots
+            const ulong minimalSize = 1;
+            var minimalVertexHandle = _bufferManager.AllocateBuffer(minimalSize, BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit, MemoryUsage.AutoPreferDevice);
+            var minimalIndexHandle = _bufferManager.AllocateBuffer(minimalSize, BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit, MemoryUsage.AutoPreferDevice);
+            var minimalMeshletHandle = _bufferManager.AllocateBuffer(minimalSize, BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit, MemoryUsage.AutoPreferDevice);
+            var minimalMeshletVertexIndexHandle = _bufferManager.AllocateBuffer(minimalSize, BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit, MemoryUsage.AutoPreferDevice);
+            var minimalMeshletTriangleIndexHandle = _bufferManager.AllocateBuffer(minimalSize, BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit, MemoryUsage.AutoPreferDevice);
 
-        // Get mesh buffers
-        var (vertexBuffer, indexBuffer) = _meshManager.GetMeshBuffers();
-        var (meshletBuffer, meshletVertexIndicesBuffer, meshletTriangleIndicesBuffer) =
-            _meshManager.GetMeshletBuffers();
+            var minimalVertexBuffer = _bufferManager.GetBuffer(minimalVertexHandle);
+            var minimalIndexBuffer = _bufferManager.GetBuffer(minimalIndexHandle);
+            var minimalMeshletBuffer = _bufferManager.GetBuffer(minimalMeshletHandle);
+            var minimalMeshletVertexIndexBuffer = _bufferManager.GetBuffer(minimalMeshletVertexIndexHandle);
+            var minimalMeshletTriangleIndexBuffer = _bufferManager.GetBuffer(minimalMeshletTriangleIndexHandle);
 
-        // Get buffer sizes from BufferManager
-        var vertexSize = _bufferManager.GetBufferSize(allHandles.VertexHandle);
-        var indexSize = _bufferManager.GetBufferSize(allHandles.IndexHandle);
-        var meshletSize = _bufferManager.GetBufferSize(allHandles.MeshletHandle);
-        var meshletVertexIndexSize = _bufferManager.GetBufferSize(allHandles.MeshletVertexIndicesHandle);
-        var meshletTriangleIndexSize = _bufferManager.GetBufferSize(allHandles.MeshletTriangleIndicesHandle);
+            _bindlessHeap.UpdateBuffer(VertexBuffer, minimalVertexBuffer, minimalSize);
+            _bindlessHeap.UpdateBuffer(IndexBuffer, minimalIndexBuffer, minimalSize);
+            _bindlessHeap.UpdateBuffer(MeshletBuffer, minimalMeshletBuffer, minimalSize);
+            _bindlessHeap.UpdateBuffer(MeshletVertexIndexBuffer, minimalMeshletVertexIndexBuffer, minimalSize);
+            _bindlessHeap.UpdateBuffer(MeshletTriangleIndexBuffer, minimalMeshletTriangleIndexBuffer, minimalSize);
 
-        // Register with bindless heap at fixed indices defined in BindlessBufferIndices
-        // These indices must match what the shaders expect
-        _bindlessHeap.UpdateBuffer(VertexBuffer, vertexBuffer, vertexSize);
-        _bindlessHeap.UpdateBuffer(IndexBuffer, indexBuffer, indexSize);
-        _bindlessHeap.UpdateBuffer(MeshletBuffer, meshletBuffer, meshletSize);
-        _bindlessHeap.UpdateBuffer(MeshletVertexIndexBuffer, meshletVertexIndicesBuffer, meshletVertexIndexSize);
-        _bindlessHeap.UpdateBuffer(MeshletTriangleIndexBuffer, meshletTriangleIndicesBuffer, meshletTriangleIndexSize);
-
-        Console.WriteLine("✓ Mesh buffers registered in bindless heap");
+            Console.WriteLine("✓ Mesh buffers pre-registered in bindless heap (will be updated after finalization)");
+        }
     }
 
     /// <summary>
@@ -1085,6 +1114,34 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             (uint)_window.Size.Y);
         _swapchainImageLayouts = Enumerable.Repeat(ImageLayout.Undefined, (int)_swapchainManager.SwapchainImageCount)
             .ToArray();
+        
+        // Industry standard: Recreate pipeline when swapchain changes to ensure compatibility
+        RecreateMeshPipeline();
+    }
+
+    /// <summary>
+    /// Recreates the mesh pipeline. Must be called when push constant struct changes or swapchain is recreated.
+    /// Industry standard: Ensures pipeline layout matches current shader and push constant requirements.
+    /// </summary>
+    private void RecreateMeshPipeline()
+    {
+        if (_vulkanContext == null || _descriptorSetLayouts == null || _swapchainManager == null) return;
+        
+        // Wait for GPU to finish using the old pipeline
+        _vulkanContext.VulkanApi.DeviceWaitIdle(_vulkanContext.Device);
+        
+        _meshPipeline?.Dispose();
+        _meshPipeline = new MeshPipeline(
+            _vulkanContext.VulkanApi,
+            _vulkanContext.Device,
+            new[]
+            {
+                _descriptorSetLayouts.BufferHeapLayout,
+                _descriptorSetLayouts.TextureHeapLayout
+            },
+            _swapchainManager.SwapchainImageFormat);
+        
+        Console.WriteLine("✓ Mesh pipeline recreated (push constant size: " + Data.RenderingData.PushConstants.SizeInBytes + " bytes)");
     }
 
     private void TransitionImageLayout(CommandBuffer commandBuffer, Image image,
@@ -1274,8 +1331,16 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         var payload = BuildCpuPayload(model);
 
         // Process immediately for synchronous loading (industry standard)
-        // This ensures mesh buffers are finalized before any diagnostics run
+        // This ensures mesh buffers are finalized and registered before any diagnostics run
         IntegratePayload(payload);
+        
+        // For re-finalization scenarios, ensure bindless heap is updated if old buffers were pending
+        if (_meshManager != null && _meshManager.HasOldBuffersPendingDeletion &&
+            _meshManager.OldBufferFencesAllSignaled(_vulkanContext!.VulkanApi, _vulkanContext.Device))
+        {
+            RegisterMeshBuffersInBindlessHeap();
+            _meshManager.ClearOldBufferHandles();
+        }
     }
 
     public void UpdateModelTransform(IModel model, Matrix4x4 transform)
