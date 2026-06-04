@@ -191,7 +191,12 @@ internal sealed class RendererExample : GameFramework
         }
 
         vulkanRenderer?.Update(deltaTime);
+        
+        // Mark first frame as completed to prevent false positives in diagnostic
+        _firstFrameCompleted = true;
     }
+
+    private bool _firstFrameCompleted = false;
 
     private void ValidateMeshBufferStatus(VulkanRenderer renderer)
     {
@@ -213,7 +218,9 @@ internal sealed class RendererExample : GameFramework
                     var drawCount = (uint)meshletDrawCountProp.GetValue(sceneBuilder);
                     Console.WriteLine($"[DIAG] MeshletDrawCount: {drawCount}");
                     
-                    if (drawCount == 0)
+                    // Only warn about 0 draw count after first frame to avoid false positives
+                    // from diagnostic running before first Draw()
+                    if (drawCount == 0 && _firstFrameCompleted)
                     {
                         Console.WriteLine("[WARNING] MeshletDrawCount = 0 => No draw calls issued!");
                         Console.WriteLine("  Root Cause: Meshlet data not generated OR mesh buffers not uploaded");
@@ -221,46 +228,30 @@ internal sealed class RendererExample : GameFramework
                 }
             }
             
-            if (meshManagerField?.GetValue(renderer) is object meshManager)
+            if (meshManagerField?.GetValue(renderer) is NjulfFramework.Rendering.Resources.MeshManager meshManager)
             {
-                var isFinalizedProp = meshManager.GetType().GetProperty("IsFinalized");
-                if (isFinalizedProp != null)
-                {
-                    var isFinalized = (bool)isFinalizedProp.GetValue(meshManager);
-                    Console.WriteLine($"[DIAG] MeshManager.Finalized: {isFinalized}");
-                    
-                    if (!isFinalized)
-                    {
-                        Console.WriteLine("[CRITICAL] MeshManager NOT finalized => Buffers not allocated!");
-                        Console.WriteLine("  Action: Call FinalizeAndUpdateMeshBuffers() after loading meshes");
-                    }
-                }
+                var isFinalized = meshManager.IsFinalized;
+                var handlesValid = meshManager.AreAllBufferHandlesValid();
                 
-                var getAllHandlesMethod = meshManager.GetType().GetMethod("GetAllMeshBufferHandles");
-                if (getAllHandlesMethod != null)
+                Console.WriteLine($"[DIAG] MeshManager.Finalized: {isFinalized}");
+                Console.WriteLine($"[DIAG] All Buffer Handles Valid: {handlesValid}");
+                
+                if (!isFinalized)
                 {
-                    var handles = getAllHandlesMethod.Invoke(meshManager, null);
-                    if (handles != null)
-                    {
-                        var handleType = handles.GetType();
-                        var vertexHandle = handleType.GetProperty("VertexHandle")?.GetValue(handles);
-                        var meshletHandle = handleType.GetProperty("MeshletHandle")?.GetValue(handles);
-                        var meshletVertexHandle = handleType.GetProperty("MeshletVertexIndicesHandle")?.GetValue(handles);
-                        var meshletTriangleHandle = handleType.GetProperty("MeshletTriangleIndicesHandle")?.GetValue(handles);
-                        
-                        Console.WriteLine("[DIAG] Buffer Handles:");
-                        Console.WriteLine($"  VertexBuffer (index 3): {(vertexHandle != null ? "Valid" : "NULL")}");
-                        Console.WriteLine($"  MeshletBuffer (index 5): {(meshletHandle != null ? "Valid" : "NULL")}");
-                        Console.WriteLine($"  MeshletVertexIndexBuffer (index 6): {(meshletVertexHandle != null ? "Valid" : "NULL")}");
-                        Console.WriteLine($"  MeshletTriangleIndexBuffer (index 7): {(meshletTriangleHandle != null ? "Valid" : "NULL")}");
-                        
-                        if (vertexHandle == null || meshletHandle == null || 
-                            meshletVertexHandle == null || meshletTriangleHandle == null)
-                        {
-                            Console.WriteLine("[CRITICAL] One or more mesh buffers are NULL!");
-                            Console.WriteLine("  Grey screen cause: Buffers at bindless indices 3,5,6,7 contain zero-initialized data");
-                        }
-                    }
+                    Console.WriteLine("[CRITICAL] MeshManager NOT finalized => Buffers not allocated!");
+                    Console.WriteLine("  Action: Call FinalizeAndUpdateMeshBuffers() after loading meshes");
+                }
+                else if (!handlesValid)
+                {
+                    var handles = meshManager.GetAllMeshBufferHandles();
+                    Console.WriteLine("[DIAG] Buffer Handles:");
+                    Console.WriteLine($"  VertexBuffer (index 3): {handles.VertexHandle.IsValid}");
+                    Console.WriteLine($"  IndexBuffer: {handles.IndexHandle.IsValid}");
+                    Console.WriteLine($"  MeshletBuffer (index 5): {handles.MeshletHandle.IsValid}");
+                    Console.WriteLine($"  MeshletVertexIndexBuffer (index 6): {handles.MeshletVertexIndicesHandle.IsValid}");
+                    Console.WriteLine($"  MeshletTriangleIndexBuffer (index 7): {handles.MeshletTriangleIndicesHandle.IsValid}");
+                    Console.WriteLine("[CRITICAL] One or more mesh buffers are Invalid!");
+                    Console.WriteLine("  Grey screen cause: Buffers at bindless indices 3,5,6,7 contain zero-initialized data");
                 }
             }
         }

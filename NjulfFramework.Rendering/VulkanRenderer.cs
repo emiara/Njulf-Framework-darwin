@@ -336,9 +336,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             _bindlessHeap.UpdateBuffer(MaterialBuffer, _sceneMaterialBuffer, 4 * 1024 * 1024);
             _bindlessHeap.UpdateBuffer(SceneMeshBuffer, _sceneMeshBuffer, 8 * 1024 * 1024);
 
-            // Note: Mesh manager finalization is deferred until first mesh is registered
-            // via LoadModelIntoScene() -> IntegratePayload() -> FinalizeAndUpdateMeshBuffers()
-            // This ensures we only finalize when there are actual meshes to process
+            // Mesh manager finalization is automatic: LoadModelIntoScene() -> IntegratePayload() -> FinalizeAndUpdateMeshBuffers()
+            // This ensures mesh buffers are allocated immediately when models are loaded via Content.Load()
 
             // Register double-buffered instance and meshlet draw buffers
             // Frame 0 at base index, Frame 1 at base index + 1
@@ -878,8 +877,10 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     {
         if (_meshManager == null || _vulkanContext == null || _bindlessHeap == null || _synchronizationManager == null) return;
         
+        bool wasAlreadyFinalized = _meshManager.IsFinalized;
+        
         // Check if we're re-finalizing (old buffers exist)
-        if (_meshManager.IsFinalized)
+        if (wasAlreadyFinalized)
         {
             // Queue old buffers for fence-based deletion
             // They'll be deleted when the in-flight fence signals
@@ -901,7 +902,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         
         // Only update bindless heap if this is the first finalization (no old buffers in flight)
         // For re-finalization, the bindless heap update is deferred to FlushDeletionQueue after fence signals
-        if (!_meshManager.IsFinalized || !_meshManager.HasOldBuffersPendingDeletion)
+        if (!wasAlreadyFinalized || !_meshManager.HasOldBuffersPendingDeletion)
         {
             _meshBuffersNeedBindlessRegistration = true;
             Console.WriteLine("✓ Mesh buffers finalized (bindless heap registration deferred until after first upload)");
@@ -1272,8 +1273,9 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         // Build CPU payload (thread-safe, no GPU operations)
         var payload = BuildCpuPayload(model);
 
-        // Enqueue for render thread integration
-        _scenePayloadQueue.Enqueue(payload);
+        // Process immediately for synchronous loading (industry standard)
+        // This ensures mesh buffers are finalized before any diagnostics run
+        IntegratePayload(payload);
     }
 
     public void UpdateModelTransform(IModel model, Matrix4x4 transform)

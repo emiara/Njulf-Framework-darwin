@@ -237,7 +237,8 @@ public class MeshManager : IMeshManager
     /// </summary>
     public (BufferHandle VertexHandle, BufferHandle IndexHandle) GetMeshBufferHandles()
     {
-        return (_meshBuffer.VertexBufferHandle, _meshBuffer.IndexBufferHandle);
+        return (VertexHandle: _meshBuffer.VertexBufferHandle,
+                IndexHandle: _meshBuffer.IndexBufferHandle);
     }
 
     /// <summary>
@@ -247,9 +248,11 @@ public class MeshManager : IMeshManager
             BufferHandle MeshletVertexIndicesHandle, BufferHandle MeshletTriangleIndicesHandle)
         GetAllMeshBufferHandles()
     {
-        return (_meshBuffer.VertexBufferHandle, _meshBuffer.IndexBufferHandle,
-                _meshBuffer.MeshletBufferHandle, _meshBuffer.MeshletVertexIndicesBufferHandle,
-                _meshBuffer.MeshletTriangleIndicesBufferHandle);
+        return (VertexHandle: _meshBuffer.VertexBufferHandle,
+                IndexHandle: _meshBuffer.IndexBufferHandle,
+                MeshletHandle: _meshBuffer.MeshletBufferHandle,
+                MeshletVertexIndicesHandle: _meshBuffer.MeshletVertexIndicesBufferHandle,
+                MeshletTriangleIndicesHandle: _meshBuffer.MeshletTriangleIndicesBufferHandle);
     }
 
     /// <summary>
@@ -257,14 +260,16 @@ public class MeshManager : IMeshManager
     /// </summary>
     public (Buffer VertexBuffer, Buffer IndexBuffer) GetMeshBuffers()
     {
-        return (_meshBuffer.VertexBuffer, _meshBuffer.IndexBuffer);
+        return (VertexBuffer: _meshBuffer.VertexBuffer,
+                IndexBuffer: _meshBuffer.IndexBuffer);
     }
 
     public (Buffer MeshletBuffer, Buffer MeshletVertexIndicesBuffer, Buffer MeshletTriangleIndicesBuffer)
         GetMeshletBuffers()
     {
-        return (_meshBuffer.MeshletBuffer, _meshBuffer.MeshletVertexIndicesBuffer,
-            _meshBuffer.MeshletTriangleIndicesBuffer);
+        return (MeshletBuffer: _meshBuffer.MeshletBuffer,
+                MeshletVertexIndicesBuffer: _meshBuffer.MeshletVertexIndicesBuffer,
+                MeshletTriangleIndicesBuffer: _meshBuffer.MeshletTriangleIndicesBuffer);
     }
 
     /// <summary>
@@ -274,5 +279,18 @@ public class MeshManager : IMeshManager
     {
         _meshByName.TryGetValue(name, out var mesh);
         return mesh;
+    }
+
+    /// <summary>
+    ///     Check if all mesh buffer handles are valid (for diagnostics).
+    /// </summary>
+    public bool AreAllBufferHandlesValid()
+    {
+        var handles = GetAllMeshBufferHandles();
+        return handles.VertexHandle.IsValid && 
+               handles.IndexHandle.IsValid && 
+               handles.MeshletHandle.IsValid && 
+               handles.MeshletVertexIndicesHandle.IsValid && 
+               handles.MeshletTriangleIndicesHandle.IsValid;
     }
 }
