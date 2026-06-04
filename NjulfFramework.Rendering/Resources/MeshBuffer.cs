@@ -103,6 +103,11 @@ public class MeshBuffer : IDisposable
     /// </summary>
     public int MeshCount => _meshes.Count;
 
+    /// <summary>
+    ///     Total meshlet count across all meshes.
+    /// </summary>
+    public int TotalMeshletCount => _meshlets.Count;
+
     public void Dispose()
     {
         _meshes.Clear();
@@ -420,6 +425,18 @@ public class MeshBuffer : IDisposable
             var entry = kvp.Value;
             var indices = mesh.Indices;
             var vertices = mesh.Vertices;
+
+            // Industry standard: Validate all vertex indices are within vertex array bounds
+            // This prevents out-of-bounds GPU memory access that causes STATUS_HEAP_CORRUPTION (0xC0000374)
+            if (vertices == null || vertices.Length == 0)
+                throw new InvalidOperationException($"Mesh '{mesh.Name}' has no vertices");
+            if (indices == null || indices.Length == 0)
+                throw new InvalidOperationException($"Mesh '{mesh.Name}' has no indices");
+            for (int i = 0; i < indices.Length; i++)
+            {
+                if (indices[i] >= vertices.Length)
+                    throw new InvalidOperationException($"Mesh '{mesh.Name}': vertex index {indices[i]} exceeds vertex count {vertices.Length}");
+            }
 
             // This mesh's base offset into the consolidated vertex buffer.
             var meshBaseVertex = entry.VertexOffset;

@@ -132,6 +132,11 @@ public class MeshManager : IMeshManager
     public bool IsFinalized => _meshBuffer.IsFinalized;
 
     /// <summary>
+    /// Total meshlet count across all meshes.
+    /// </summary>
+    public int TotalMeshletCount => _meshBuffer.TotalMeshletCount;
+
+    /// <summary>
     /// Clear old buffer handles after they've been consumed for deferred deletion.
     /// </summary>
     public void ClearOldBufferHandles() => _meshBuffer.ClearOldBufferHandles();

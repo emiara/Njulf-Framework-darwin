@@ -49,6 +49,10 @@ layout(push_constant) uniform PushConstants
     uint meshletDrawCount;
     uint FrameIndex;
     uint MaxFramesInFlight;
+    uint VertexBufferIndex;
+    uint MeshletBufferIndex;
+    uint MeshletVertexIndexBufferIndex;
+    uint MeshletTriangleIndexBufferIndex;
 } pc;
 
 // Double-buffered buffer access: add FrameIndex offset to per-frame buffers

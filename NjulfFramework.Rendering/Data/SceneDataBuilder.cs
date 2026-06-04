@@ -197,12 +197,27 @@ public class SceneDataBuilder : ISceneDataBuilder
                 Pad = 0
             });
 
+            // Industry standard: Validate meshlet indices are within bounds
+            // Prevents STATUS_HEAP_CORRUPTION (0xC0000374) from out-of-bounds GPU buffer access
+            if (entry.MeshletOffset == uint.MaxValue)
+                throw new InvalidOperationException($"Mesh '{mesh.Name}' has invalid meshlet offset (uint.MaxValue)");
+            if (entry.MeshletCount == uint.MaxValue)
+                throw new InvalidOperationException($"Mesh '{mesh.Name}' has invalid meshlet count (uint.MaxValue)");
+            
+            uint totalMeshletCount = (uint)(_meshManager?.TotalMeshletCount ?? 0);
             for (uint m = 0; m < entry.MeshletCount; m++)
             {
+                uint meshletIndex = entry.MeshletOffset + m;
+                // Check for overflow and validate against total meshlet count
+                if (meshletIndex < entry.MeshletOffset)
+                    throw new InvalidOperationException($"Meshlet index overflow for mesh '{mesh.Name}'");
+                if (meshletIndex >= totalMeshletCount)
+                    throw new InvalidOperationException($"Mesh '{mesh.Name}': meshlet index {meshletIndex} exceeds total meshlet count {totalMeshletCount}");
+                
                 _meshletDraws.Add(new GPUMeshletDraw
                 {
                     InstanceIndex = instanceIndex,
-                    MeshletIndex = entry.MeshletOffset + m
+                    MeshletIndex = meshletIndex
                 });
             }
         }
