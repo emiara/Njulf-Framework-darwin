@@ -12,8 +12,8 @@ layout(set = 0, binding = 0) readonly buffer BufferHeap { uint data[]; } buffers
 
 layout(push_constant) uniform PushConstants
 {
-    mat4 view;
-    mat4 projection;
+    layout(row_major) mat4 view;
+    layout(row_major) mat4 projection;
     uint screenWidth;
     uint screenHeight;
     uint debugMeshlets;
@@ -32,7 +32,7 @@ layout(push_constant) uniform PushConstants
     uint MeshletTriangleIndexBufferIndex;
 } pc;
 
-// Double-buffered buffer access: add FrameIndex offset to per-frame buffers
+// Double-buffered buffer access: add FrameIndex offset to per-frame buffers only
 #define DB_BO(f) (buffers[(f) + pc.FrameIndex])
 
 struct Payload { uint instanceIndex; uint meshletIndex; };

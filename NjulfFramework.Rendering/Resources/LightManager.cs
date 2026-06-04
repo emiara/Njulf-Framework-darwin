@@ -7,6 +7,8 @@ using NjulfFramework.Rendering.Core;
 using NjulfFramework.Rendering.Memory;
 using NjulfFramework.Rendering.Resources.Descriptors;
 using NjulfFramework.Rendering.Resources.Handles;
+
+using static NjulfFramework.Rendering.Resources.Descriptors.BindlessBufferIndices;
 using Silk.NET.Vulkan;
 using Vma;
 using Buffer = Silk.NET.Vulkan.Buffer;
@@ -55,14 +57,16 @@ public class LightManager : ILightManager, IDisposable
 
         _lightBufferVk = _bufferManager.GetBuffer(_lightBuffer);
 
-        // Register with bindless heap at index 3 (after scene buffers 0,1,2)
+        // Register with bindless heap at fixed index
         // Scene buffers: 0=object, 1=material, 2=mesh
-        // Light buffer must be at a known index that matches shader expectations
-        const uint lightBufferIndex = 3;
-        LightBufferBindlessIndex = lightBufferIndex;
-        bindlessHeap.UpdateBuffer(lightBufferIndex, _lightBufferVk, LightBufferSize);
+        // Mesh buffers: 3=vertex, 4=index, 5=meshlet, 6=meshletVertexIndex, 7=meshletTriangleIndex
+        // Instance buffers: 8,9
+        // Meshlet draw buffers: 10,11
+        // Light buffers: 12=light, 13=header, 14=indices
+        LightBufferBindlessIndex = LightBuffer;
+        bindlessHeap.UpdateBuffer(LightBuffer, _lightBufferVk, LightBufferSize);
 
-        Console.WriteLine($"✓ Light manager initialized (max {MaxLightCount} lights, buffer index {lightBufferIndex})");
+        Console.WriteLine($"✓ Light manager initialized (max {MaxLightCount} lights, buffer index {LightBufferBindlessIndex})");
     }
 
     public uint LightBufferBindlessIndex { get; }

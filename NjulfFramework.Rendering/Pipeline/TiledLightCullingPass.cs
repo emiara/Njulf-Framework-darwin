@@ -4,6 +4,8 @@ using NjulfFramework.Core.Interfaces.Rendering;
 using NjulfFramework.Rendering.Resources;
 using NjulfFramework.Rendering.Resources.Descriptors;
 using NjulfFramework.Rendering.Resources.Handles;
+
+using static NjulfFramework.Rendering.Resources.Descriptors.BindlessBufferIndices;
 using Silk.NET.Vulkan;
 using Vma;
 using Buffer = Silk.NET.Vulkan.Buffer;
@@ -73,12 +75,15 @@ public class TiledLightCullingPass : RenderGraphPass
             MemoryUsage.AutoPreferDevice);
         _tiledLightHeaderBufferVk = bufferManager.GetBuffer(_tiledLightHeaderBuffer);
 
-        // Register with bindless heap at fixed indices (after scene buffers 0,1,2 and light buffer 3)
-        // Scene buffers: 0=object, 1=material, 2=mesh, 3=light
-        // Tiled light buffers: 4=header, 5=indices
-        _tiledLightHeaderBufferIndex = 4;
-        _tiledLightIndicesBufferIndex = 5;
-        bindlessHeap.UpdateBuffer(_tiledLightHeaderBufferIndex, _tiledLightHeaderBufferVk, MaxTiles * 8);
+        // Register with bindless heap at fixed indices
+        // Scene buffers: 0=object, 1=material, 2=mesh
+        // Mesh buffers: 3=vertex, 4=index, 5=meshlet, 6=meshletVertexIndex, 7=meshletTriangleIndex
+        // Instance buffers: 8,9
+        // Meshlet draw buffers: 10,11
+        // Light buffers: 12=light, 13=header, 14=indices
+        _tiledLightHeaderBufferIndex = TiledLightHeaderBuffer;
+        _tiledLightIndicesBufferIndex = TiledLightIndicesBuffer;
+        bindlessHeap.UpdateBuffer(TiledLightHeaderBuffer, _tiledLightHeaderBufferVk, MaxTiles * 8);
 
         // Step 3: Allocate tiled light indices buffer (all light indices for all tiles)
         _tiledLightIndicesBuffer = bufferManager.AllocateBuffer(
@@ -87,8 +92,8 @@ public class TiledLightCullingPass : RenderGraphPass
             MemoryUsage.AutoPreferDevice);
         _tiledLightIndicesBufferVk = bufferManager.GetBuffer(_tiledLightIndicesBuffer);
 
-        // Register with bindless heap at fixed index 5
-        bindlessHeap.UpdateBuffer(_tiledLightIndicesBufferIndex, _tiledLightIndicesBufferVk,
+        // Register with bindless heap at fixed index
+        bindlessHeap.UpdateBuffer(TiledLightIndicesBuffer, _tiledLightIndicesBufferVk,
             MaxTiles * MaxLightsPerTile * 4);
 
         Console.WriteLine("✓ Tiled light culling pass initialized");

@@ -9,8 +9,8 @@ layout(set = 0, binding = 0) readonly buffer BufferHeap { uint data[]; } buffers
 
 layout(push_constant) uniform PushConstants
 {
-    mat4 view;
-    mat4 projection;
+    layout(row_major) mat4 view;
+    layout(row_major) mat4 projection;
     uint screenWidth;
     uint screenHeight;
     uint debugMeshlets;
@@ -23,6 +23,10 @@ layout(push_constant) uniform PushConstants
     uint meshletDrawCount;
     uint FrameIndex;
     uint MaxFramesInFlight;
+    uint VertexBufferIndex;
+    uint MeshletBufferIndex;
+    uint MeshletVertexIndexBufferIndex;
+    uint MeshletTriangleIndexBufferIndex;
 } pc;
 
 // Payload passed to the mesh shader so it knows which draw it is processing.
@@ -37,13 +41,13 @@ const uint MESHLET_STRIDE = 24u;
 
 vec4 readVec4(uint baseUint) {
     return vec4(
-        uintBitsToFloat(buffers[5u].data[baseUint + 0u]),
-        uintBitsToFloat(buffers[5u].data[baseUint + 1u]),
-        uintBitsToFloat(buffers[5u].data[baseUint + 2u]),
-        uintBitsToFloat(buffers[5u].data[baseUint + 3u]));
+        uintBitsToFloat(buffers[pc.MeshletBufferIndex].data[baseUint + 0u]),
+        uintBitsToFloat(buffers[pc.MeshletBufferIndex].data[baseUint + 1u]),
+        uintBitsToFloat(buffers[pc.MeshletBufferIndex].data[baseUint + 2u]),
+        uintBitsToFloat(buffers[pc.MeshletBufferIndex].data[baseUint + 3u]));
 }
 
-// Double-buffered buffer access: add FrameIndex offset to per-frame buffers
+// Double-buffered buffer access: add FrameIndex offset to per-frame buffers only
 #define DB_BO(f) (buffers[(f) + pc.FrameIndex])
 
 // Instance is 80 bytes = 20 uints: model(0-15), materialIndex(16), meshletBaseOffset(17), meshletCount(18), pad(19)

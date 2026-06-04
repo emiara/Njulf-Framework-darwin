@@ -5,6 +5,8 @@ using NjulfFramework.Rendering.Resources;
 using NjulfFramework.Rendering.Resources.Descriptors;
 using Silk.NET.Vulkan;
 
+using static NjulfFramework.Rendering.Resources.Descriptors.BindlessBufferIndices;
+
 namespace NjulfFramework.Rendering.Pipeline;
 
 /// <summary>
@@ -85,27 +87,27 @@ public class RenderGraphContext(uint width, uint height, BindlessDescriptorHeap 
     /// <summary>
     ///     Bindless buffer index for vertex buffer (mesh shading).
     /// </summary>
-    public uint VertexBufferIndex { get; set; } = 3;
+    public uint VertexBufferIndex { get; set; } = BindlessBufferIndices.VertexBuffer;
 
     /// <summary>
     ///     Bindless buffer index for index buffer (mesh shading).
     /// </summary>
-    public uint IndexBufferIndex { get; set; } = 4;
+    public uint IndexBufferIndex { get; set; } = BindlessBufferIndices.IndexBuffer;
 
     /// <summary>
     ///     Bindless buffer index for meshlet buffer (mesh shading).
     /// </summary>
-    public uint MeshletBufferIndex { get; set; } = 5;
+    public uint MeshletBufferIndex { get; set; } = BindlessBufferIndices.MeshletBuffer;
 
     /// <summary>
     ///     Bindless buffer index for meshlet vertex indices (mesh shading).
     /// </summary>
-    public uint MeshletVertexIndexBufferIndex { get; set; } = 6;
+    public uint MeshletVertexIndexBufferIndex { get; set; } = BindlessBufferIndices.MeshletVertexIndexBuffer;
 
     /// <summary>
     ///     Bindless buffer index for meshlet triangle indices (mesh shading).
     /// </summary>
-    public uint MeshletTriangleIndexBufferIndex { get; set; } = 7;
+    public uint MeshletTriangleIndexBufferIndex { get; set; } = BindlessBufferIndices.MeshletTriangleIndexBuffer;
 
     /// <summary>
     ///     Total light count for this frame.

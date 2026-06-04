@@ -13,6 +13,7 @@ using NjulfFramework.Rendering.Pipeline;
 using NjulfFramework.Rendering.Resources;
 using NjulfFramework.Rendering.Resources.Descriptors;
 using NjulfFramework.Rendering.Resources.Handles;
+using static NjulfFramework.Rendering.Resources.Descriptors.BindlessBufferIndices;
 using Silk.NET.Core.Native;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.EXT;
@@ -65,18 +66,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     private KhrSwapchain? _khrSwapchain;
 
 
-    // Phase 3.5: Mesh buffer bindless indices (indices 3-7 in buffer heap)
-    // Static buffers (single instance, not double-buffered):
-    private uint _vertexBufferBindlessIndex = 3;
-    private uint _indexBufferBindlessIndex = 4;
-    private uint _meshletBufferBindlessIndex = 5;
-    private uint _meshletVertexIndexBufferBindlessIndex = 6;
-    private uint _meshletTriangleIndexBufferBindlessIndex = 7;
-    // Double-buffered per-frame buffers (2 indices each):
-    // Instance: 8 (frame 0), 9 (frame 1)
-    // MeshletDraw: 10 (frame 0), 11 (frame 1)
-    private uint _instanceBufferBindlessIndex = 8;
-    private uint _meshletDrawBufferBindlessIndex = 10;
+    // Bindless buffer indices - using centralized constants for maintainability
+    // These values must match BindlessBufferIndices.cs and shader expectations
     private MeshManager? _meshManager;
     private MeshPipeline? _meshPipeline;
     private bool _meshBuffersNeedBindlessRegistration = false;
@@ -210,6 +201,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         _meshPipeline?.Dispose();
         _synchronizationManager?.Dispose();
         _commandBufferManager?.Dispose();
+        
+        // Destroy swapchain BEFORE surface (Vulkan spec requirement)
         _swapchainManager?.Dispose();
         _renderGraph = null;
 
@@ -224,6 +217,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         if (_defaultSampler.Handle != 0)
             _vulkanContext.VulkanApi.DestroySampler(_vulkanContext.Device, _defaultSampler, null);
 
+        // Surface must be destroyed AFTER all swapchains created from it
         if (_vulkanContext != null && _surface.Handle != 0)
             _khrSurface!.DestroySurface(_vulkanContext.Instance, _surface, null);
 
@@ -337,19 +331,23 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             InitializeSceneBuffers();
 
             // Register scene buffers in bindless heap at fixed indices
-            // These must match the shader binding indices
-            _bindlessHeap.UpdateBuffer(0, _sceneObjectBuffer, 16 * 1024 * 1024); // Object buffer at index 0
-            _bindlessHeap.UpdateBuffer(1, _sceneMaterialBuffer, 4 * 1024 * 1024); // Material buffer at index 1
-            _bindlessHeap.UpdateBuffer(2, _sceneMeshBuffer, 8 * 1024 * 1024); // Mesh buffer at index 2
-            
+            // These must match the shader binding indices and BindlessBufferIndices.cs
+            _bindlessHeap.UpdateBuffer(ObjectBuffer, _sceneObjectBuffer, 16 * 1024 * 1024);
+            _bindlessHeap.UpdateBuffer(MaterialBuffer, _sceneMaterialBuffer, 4 * 1024 * 1024);
+            _bindlessHeap.UpdateBuffer(SceneMeshBuffer, _sceneMeshBuffer, 8 * 1024 * 1024);
+
+            // Note: Mesh manager finalization is deferred until first mesh is registered
+            // via LoadModelIntoScene() -> IntegratePayload() -> FinalizeAndUpdateMeshBuffers()
+            // This ensures we only finalize when there are actual meshes to process
+
             // Register double-buffered instance and meshlet draw buffers
             // Frame 0 at base index, Frame 1 at base index + 1
             for (uint i = 0; i < MaxFramesInFlight; i++)
             {
-                _bindlessHeap.UpdateBuffer(_instanceBufferBindlessIndex + i, _instanceBuffers[i], 16 * 1024 * 1024);
-                _bindlessHeap.UpdateBuffer(_meshletDrawBufferBindlessIndex + i, _meshletDrawBuffers[i], 32 * 1024 * 1024);
+                _bindlessHeap.UpdateBuffer(InstanceBufferBase + i, _instanceBuffers[i], 16 * 1024 * 1024);
+                _bindlessHeap.UpdateBuffer(MeshletDrawBufferBase + i, _meshletDrawBuffers[i], 32 * 1024 * 1024);
             }
-            
+
             Console.WriteLine("✓ Scene buffers registered in bindless heap with double buffering");
 
             _meshPipeline = new MeshPipeline(
@@ -409,7 +407,8 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             Debug.WriteLine($"Failed to initialize renderer: {ex.Message}");
             Console.WriteLine($"✗ Renderer initialization failed: {ex.Message}");
             if (ex.InnerException != null) Console.WriteLine($"  Inner: {ex.InnerException.Message}");
-            // Cleanup surface on failure
+            // Cleanup on failure: destroy swapchain BEFORE surface (Vulkan spec requirement)
+            _swapchainManager?.Dispose();
             if (_surface.Handle != 0 && _khrSurface != null)
                 _khrSurface.DestroySurface(_vulkanContext!.Instance, _surface, null);
             throw;
@@ -775,8 +774,16 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             LightBufferIndex = LightManager?.LightBufferBindlessIndex ?? 0,
             TiledLightHeaderBufferIndex = _tiledLightCullingPass?.TiledLightHeaderBufferIndex ?? 0,
             TiledLightIndicesBufferIndex = _tiledLightCullingPass?.TiledLightIndicesBufferIndex ?? 0,
-            InstanceBufferIndex = _instanceBufferBindlessIndex + frameIndex,
-            MeshletDrawBufferIndex = _meshletDrawBufferBindlessIndex + frameIndex,
+
+            // Static mesh buffers (never change, use constants directly)
+            VertexBufferIndex = VertexBuffer,
+            MeshletBufferIndex = MeshletBuffer,
+            MeshletVertexIndexBufferIndex = MeshletVertexIndexBuffer,
+            MeshletTriangleIndexBufferIndex = MeshletTriangleIndexBuffer,
+
+            // Per-frame buffers (frame-indexed)
+            InstanceBufferIndex = InstanceBufferBase + frameIndex,
+            MeshletDrawBufferIndex = MeshletDrawBufferBase + frameIndex,
             MeshletDrawCount = _sceneBuilder.MeshletDrawCount
         };
 
@@ -907,56 +914,40 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
 
     /// <summary>
     ///     Register mesh buffers in the bindless descriptor heap at fixed indices.
+    ///     Uses centralized constants from BindlessBufferIndices.
+    ///     Only registers buffers that have been allocated (handles non-empty mesh case).
     /// </summary>
     private void RegisterMeshBuffersInBindlessHeap()
     {
         if (_meshManager == null || _bindlessHeap == null || _bufferManager == null) return;
-        
+
         // Get all buffer handles
         var allHandles = _meshManager.GetAllMeshBufferHandles();
-        
+
+        // Check if mesh buffers have been allocated (only true after FinalizeOrReFinalize with meshes)
+        if (!allHandles.VertexHandle.IsValid) return;
+
         // Get mesh buffers
         var (vertexBuffer, indexBuffer) = _meshManager.GetMeshBuffers();
         var (meshletBuffer, meshletVertexIndicesBuffer, meshletTriangleIndicesBuffer) =
             _meshManager.GetMeshletBuffers();
-        
+
         // Get buffer sizes from BufferManager
         var vertexSize = _bufferManager.GetBufferSize(allHandles.VertexHandle);
         var indexSize = _bufferManager.GetBufferSize(allHandles.IndexHandle);
         var meshletSize = _bufferManager.GetBufferSize(allHandles.MeshletHandle);
         var meshletVertexIndexSize = _bufferManager.GetBufferSize(allHandles.MeshletVertexIndicesHandle);
         var meshletTriangleIndexSize = _bufferManager.GetBufferSize(allHandles.MeshletTriangleIndicesHandle);
-        
-        // Register with bindless heap at fixed indices (3-7)
+
+        // Register with bindless heap at fixed indices defined in BindlessBufferIndices
         // These indices must match what the shaders expect
-        _bindlessHeap.UpdateBuffer(_vertexBufferBindlessIndex, vertexBuffer, vertexSize);
-        _bindlessHeap.UpdateBuffer(_indexBufferBindlessIndex, indexBuffer, indexSize);
-        _bindlessHeap.UpdateBuffer(_meshletBufferBindlessIndex, meshletBuffer, meshletSize);
-        _bindlessHeap.UpdateBuffer(_meshletVertexIndexBufferBindlessIndex, meshletVertexIndicesBuffer, meshletVertexIndexSize);
-        _bindlessHeap.UpdateBuffer(_meshletTriangleIndexBufferBindlessIndex, meshletTriangleIndicesBuffer, meshletTriangleIndexSize);
-        
-        // var cmd = _commandBufferManager.BeginSingleTimeCommands();
-        //
-        // var barrier = new MemoryBarrier
-        // {
-        //     SType = StructureType.MemoryBarrier,
-        //     SrcAccessMask = AccessFlags.HostWriteBit,  // Descriptor updates are transfer writes
-        //     DstAccessMask = AccessFlags.ShaderReadBit       // Shaders will read the descriptors
-        // };
-        //
-        // _vulkanContext.VulkanApi.CmdPipelineBarrier(
-        //     cmd,
-        //     PipelineStageFlags.HostBit,  // Source: host (CPU) updates
-        //     PipelineStageFlags.MeshShaderBitExt | PipelineStageFlags.TaskShaderBitExt,  // Destination: mesh/task shaders
-        //     0,
-        //     1, &barrier,
-        //     0, null,
-        //     0, null);
-        //
-        // _commandBufferManager.EndSingleTimeCommands(cmd);
-        
-        
-        Console.WriteLine("✓ Mesh buffers registered in bindless heap at indices 3-7");
+        _bindlessHeap.UpdateBuffer(VertexBuffer, vertexBuffer, vertexSize);
+        _bindlessHeap.UpdateBuffer(IndexBuffer, indexBuffer, indexSize);
+        _bindlessHeap.UpdateBuffer(MeshletBuffer, meshletBuffer, meshletSize);
+        _bindlessHeap.UpdateBuffer(MeshletVertexIndexBuffer, meshletVertexIndicesBuffer, meshletVertexIndexSize);
+        _bindlessHeap.UpdateBuffer(MeshletTriangleIndexBuffer, meshletTriangleIndicesBuffer, meshletTriangleIndexSize);
+
+        Console.WriteLine("✓ Mesh buffers registered in bindless heap");
     }
 
     /// <summary>

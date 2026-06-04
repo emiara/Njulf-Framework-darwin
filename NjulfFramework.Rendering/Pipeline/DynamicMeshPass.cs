@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using NjulfFramework.Rendering.Resources.Descriptors;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.EXT;
 
@@ -111,6 +113,21 @@ public class DynamicMeshPass : RenderGraphPass
             if (ctx.MeshManager == null || ctx.SceneDataBuilder == null || ctx.MeshletDrawCount == 0)
                 return;
 
+            // Validate that all required bindless buffer indices are set to expected values
+            // This catches configuration errors early (glitching geometry = descriptors not registered)
+            Debug.Assert(ctx.VertexBufferIndex == BindlessBufferIndices.VertexBuffer,
+                "VertexBufferIndex must match BindlessBufferIndices.VertexBuffer");
+            Debug.Assert(ctx.MeshletBufferIndex == BindlessBufferIndices.MeshletBuffer,
+                "MeshletBufferIndex must match BindlessBufferIndices.MeshletBuffer");
+            Debug.Assert(ctx.MeshletVertexIndexBufferIndex == BindlessBufferIndices.MeshletVertexIndexBuffer,
+                "MeshletVertexIndexBufferIndex must match BindlessBufferIndices.MeshletVertexIndexBuffer");
+            Debug.Assert(ctx.MeshletTriangleIndexBufferIndex == BindlessBufferIndices.MeshletTriangleIndexBuffer,
+                "MeshletTriangleIndexBufferIndex must match BindlessBufferIndices.MeshletTriangleIndexBuffer");
+            Debug.Assert(ctx.InstanceBufferIndex >= BindlessBufferIndices.InstanceBufferBase,
+                "InstanceBufferIndex must be >= InstanceBufferBase");
+            Debug.Assert(ctx.MeshletDrawBufferIndex >= BindlessBufferIndices.MeshletDrawBufferBase,
+                "MeshletDrawBufferIndex must be >= MeshletDrawBufferBase");
+
             var pushConstants = new Data.RenderingData.PushConstants
             {
                 View = ctx.View,
@@ -126,7 +143,11 @@ public class DynamicMeshPass : RenderGraphPass
                 MeshletDrawBufferIndex = ctx.MeshletDrawBufferIndex,
                 MeshletDrawCount = ctx.MeshletDrawCount,
                 FrameIndex = ctx.FrameIndex,
-                MaxFramesInFlight = 2
+                MaxFramesInFlight = 2,
+                VertexBufferIndex = ctx.VertexBufferIndex,
+                MeshletBufferIndex = ctx.MeshletBufferIndex,
+                MeshletVertexIndexBufferIndex = ctx.MeshletVertexIndexBufferIndex,
+                MeshletTriangleIndexBufferIndex = ctx.MeshletTriangleIndexBufferIndex
             };
 
             _vk.CmdPushConstants(cmd, _pipeline.PipelineLayout,
