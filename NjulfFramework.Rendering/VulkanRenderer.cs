@@ -32,6 +32,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     // Phase 2: Resource managers
     private readonly BufferManager? _bufferManager;
     private readonly FrameUploadRing _frameUploadRing;
+    private readonly BufferResizer _bufferResizer;
     private TextureManager? _textureManager;
     private LightManager? _lightManagerImpl; // concrete type for internal Vulkan calls
 
@@ -40,8 +41,17 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     private readonly Dictionary<string, List<string>> _modelToRenderObjectNames = new();
     private readonly ConcurrentQueue<ScenePayload> _scenePayloadQueue = new();
     private FenceBasedBufferDeleter? _bufferDeleter;
+    private readonly object _bufferResizeLock = new object(); // Thread safety for buffer resizing
 
     private SceneDataBuilder? _sceneBuilder;
+    private BufferSizes _bufferSizes;
+
+    // Buffer handles for dynamic resizing
+    private BufferHandle _sceneObjectBufferHandle;
+    private BufferHandle _sceneMaterialBufferHandle;
+    private BufferHandle _sceneMeshBufferHandle;
+    private BufferHandle[] _instanceBufferHandles = new BufferHandle[2];
+    private BufferHandle[] _meshletDrawBufferHandles = new BufferHandle[2];
 
     // Camera - provided via DI, used for view/projection matrices
     private readonly ICamera _camera;
@@ -87,13 +97,15 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     private SynchronizationManager? _synchronizationManager;
     private TiledLightCullingPass? _tiledLightCullingPass;
 
-    public VulkanRenderer(IWindow window, ICamera camera)
+    public VulkanRenderer(IWindow window, ICamera camera, BufferSizes? bufferSizes = null)
     {
         _window = window ?? throw new ArgumentNullException(nameof(window));
         _camera = camera ?? throw new ArgumentNullException(nameof(camera));
+        _bufferSizes = bufferSizes ?? BufferSizes.Default;
 
         _vulkanContext = new VulkanContext(enableValidationLayers: true);
         _bufferManager = new BufferManager(_vulkanContext.VulkanApi, _vulkanContext.VmaAllocator);
+        _bufferResizer = new BufferResizer(_bufferManager);
         _frameUploadRing = new FrameUploadRing(_bufferManager);
         _bufferDeleter = new FenceBasedBufferDeleter(_vulkanContext.VulkanApi, _vulkanContext.Device, _bufferManager);
     }
@@ -221,6 +233,75 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             _khrSurface!.DestroySurface(_vulkanContext.Instance, _surface, null);
 
         _vulkanContext?.Dispose();
+    }
+
+    /// <summary>
+    /// Ensures scene buffers have sufficient capacity for the current frame.
+    /// </summary>
+    private void EnsureBufferCapacityForScene()
+    {
+        lock (_bufferResizeLock)
+        {
+            // Estimate required buffer sizes
+            ulong requiredObjectBufferSize = _sceneBuilder.EstimateObjectBufferSize();
+            ulong requiredMaterialBufferSize = _sceneBuilder.EstimateMaterialBufferSize();
+            ulong requiredMeshBufferSize = _sceneBuilder.EstimateMeshBufferSize();
+
+            // Resize buffers if needed
+            _sceneObjectBufferHandle = _bufferResizer.EnsureBufferCapacity(
+                _sceneObjectBufferHandle,
+                requiredObjectBufferSize,
+                BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
+                MemoryUsage.AutoPreferDevice);
+            _sceneObjectBuffer = _bufferManager.GetBuffer(_sceneObjectBufferHandle);
+            _bindlessHeap.UpdateBuffer(ObjectBuffer, _sceneObjectBuffer, _bufferManager.GetBufferSize(_sceneObjectBufferHandle));
+
+            _sceneMaterialBufferHandle = _bufferResizer.EnsureBufferCapacity(
+                _sceneMaterialBufferHandle,
+                requiredMaterialBufferSize,
+                BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
+                MemoryUsage.AutoPreferDevice);
+            _sceneMaterialBuffer = _bufferManager.GetBuffer(_sceneMaterialBufferHandle);
+            _bindlessHeap.UpdateBuffer(MaterialBuffer, _sceneMaterialBuffer, _bufferManager.GetBufferSize(_sceneMaterialBufferHandle));
+
+            _sceneMeshBufferHandle = _bufferResizer.EnsureBufferCapacity(
+                _sceneMeshBufferHandle,
+                requiredMeshBufferSize,
+                BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
+                MemoryUsage.AutoPreferDevice);
+            _sceneMeshBuffer = _bufferManager.GetBuffer(_sceneMeshBufferHandle);
+            _bindlessHeap.UpdateBuffer(SceneMeshBuffer, _sceneMeshBuffer, _bufferManager.GetBufferSize(_sceneMeshBufferHandle));
+        }
+    }
+
+    /// <summary>
+    /// Ensures frame-specific buffers have sufficient capacity.
+    /// </summary>
+    private void EnsureBufferCapacityForFrame(uint frameIndex)
+    {
+        lock (_bufferResizeLock)
+        {
+            // Estimate required buffer sizes
+            ulong requiredInstanceBufferSize = _sceneBuilder.EstimateInstanceBufferSize();
+            ulong requiredMeshletDrawBufferSize = _sceneBuilder.EstimateMeshletDrawBufferSize();
+
+            // Resize buffers if needed
+            _instanceBufferHandles[frameIndex] = _bufferResizer.EnsureBufferCapacity(
+                _instanceBufferHandles[frameIndex],
+                requiredInstanceBufferSize,
+                BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
+                MemoryUsage.AutoPreferDevice);
+            _instanceBuffers[frameIndex] = _bufferManager.GetBuffer(_instanceBufferHandles[frameIndex]);
+            _bindlessHeap.UpdateBuffer(InstanceBufferBase + frameIndex, _instanceBuffers[frameIndex], _bufferManager.GetBufferSize(_instanceBufferHandles[frameIndex]));
+
+            _meshletDrawBufferHandles[frameIndex] = _bufferResizer.EnsureBufferCapacity(
+                _meshletDrawBufferHandles[frameIndex],
+                requiredMeshletDrawBufferSize,
+                BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit,
+                MemoryUsage.AutoPreferDevice);
+            _meshletDrawBuffers[frameIndex] = _bufferManager.GetBuffer(_meshletDrawBufferHandles[frameIndex]);
+            _bindlessHeap.UpdateBuffer(MeshletDrawBufferBase + frameIndex, _meshletDrawBuffers[frameIndex], _bufferManager.GetBufferSize(_meshletDrawBufferHandles[frameIndex]));
+        }
     }
 
     /// <summary>
@@ -576,46 +657,37 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         if (_bufferManager == null)
             throw new InvalidOperationException("BufferManager not initialized");
 
-        const ulong objectBufferSize = 16 * 1024 * 1024; // 16 MB for objects
-        const ulong materialBufferSize = 4 * 1024 * 1024; // 4 MB for materials
-        const ulong meshBufferSize = 8 * 1024 * 1024; // 8 MB for mesh data
-
         var storageUsage = BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit;
 
-        var objectHandle = _bufferManager.AllocateBuffer(
-            objectBufferSize,
+        // Allocate initial buffers using configurable sizes
+        _sceneObjectBufferHandle = _bufferManager.AllocateBuffer(
+            _bufferSizes.ObjectBufferSize,
             storageUsage,
             MemoryUsage.AutoPreferDevice);
+        _sceneObjectBuffer = _bufferManager.GetBuffer(_sceneObjectBufferHandle);
 
-        var materialHandle = _bufferManager.AllocateBuffer(
-            materialBufferSize,
+        _sceneMaterialBufferHandle = _bufferManager.AllocateBuffer(
+            _bufferSizes.MaterialBufferSize,
             storageUsage,
             MemoryUsage.AutoPreferDevice);
+        _sceneMaterialBuffer = _bufferManager.GetBuffer(_sceneMaterialBufferHandle);
 
-        var meshHandle = _bufferManager.AllocateBuffer(
-            meshBufferSize,
+        _sceneMeshBufferHandle = _bufferManager.AllocateBuffer(
+            _bufferSizes.MeshBufferSize,
             storageUsage,
             MemoryUsage.AutoPreferDevice);
-
-        _sceneObjectBuffer = _bufferManager.GetBuffer(objectHandle);
-        _sceneMaterialBuffer = _bufferManager.GetBuffer(materialHandle);
-        _sceneMeshBuffer = _bufferManager.GetBuffer(meshHandle);
-
-        // TODO: Register these in BindlessDescriptorHeap later (Phase 1.3)
-        
-        const ulong instanceBufferSize = 16 * 1024 * 1024;   // 16 MB instances
-        const ulong meshletDrawBufferSize = 32 * 1024 * 1024; // 32 MB (instance,meshlet) pairs
+        _sceneMeshBuffer = _bufferManager.GetBuffer(_sceneMeshBufferHandle);
 
         // Allocate double-buffered instance and meshlet draw buffers
         for (uint i = 0; i < MaxFramesInFlight; i++)
         {
-            var instanceHandle = _bufferManager.AllocateBuffer(
-                instanceBufferSize, storageUsage, MemoryUsage.AutoPreferDevice);
-            var meshletDrawHandle = _bufferManager.AllocateBuffer(
-                meshletDrawBufferSize, storageUsage, MemoryUsage.AutoPreferDevice);
-            
-            _instanceBuffers[i] = _bufferManager.GetBuffer(instanceHandle);
-            _meshletDrawBuffers[i] = _bufferManager.GetBuffer(meshletDrawHandle);
+            _instanceBufferHandles[i] = _bufferManager.AllocateBuffer(
+                _bufferSizes.InstanceBufferSize, storageUsage, MemoryUsage.AutoPreferDevice);
+            _instanceBuffers[i] = _bufferManager.GetBuffer(_instanceBufferHandles[i]);
+
+            _meshletDrawBufferHandles[i] = _bufferManager.AllocateBuffer(
+                _bufferSizes.MeshletDrawBufferSize, storageUsage, MemoryUsage.AutoPreferDevice);
+            _meshletDrawBuffers[i] = _bufferManager.GetBuffer(_meshletDrawBufferHandles[i]);
         }
     }
 
@@ -702,29 +774,33 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         _commandBufferManager.ResetCommandBuffer(transferCommandBuffer);
         _commandBufferManager.BeginRecording(transferCommandBuffer);
 
-        // Upload mesh data once (no-op for already uploaded meshes)
-        foreach (var renderObject in _renderObjects.Values)
-            if (renderObject?.Mesh != null)
-                _meshManager.UploadMeshToGPU(renderObject.Mesh, transferCommandBuffer, _frameUploadRing);
+            // Upload mesh data once (no-op for already uploaded meshes)
+            foreach (var renderObject in _renderObjects.Values)
+                if (renderObject?.Mesh != null)
+                    _meshManager.UploadMeshToGPU(renderObject.Mesh, transferCommandBuffer, _frameUploadRing);
 
-        // Write CPU scene data to staging buffer and record copy commands
-        // Use QFOT (Queue Family Ownership Transfer) for proper texture synchronization
-        _sceneBuilder.UploadToGPU(
-            _vulkanContext.VulkanApi,
-            transferCommandBuffer,
-            _vulkanContext.TransferQueueFamily,
-            _vulkanContext.GraphicsQueueFamily,
-            _frameUploadRing,
-            _sceneObjectBuffer,
-            _sceneMaterialBuffer,
-            _sceneMeshBuffer);
-        
-        _sceneBuilder.UploadInstanceAndDrawData(
-            _vulkanContext.VulkanApi,
-            transferCommandBuffer,
-            _frameUploadRing,
-            _instanceBuffers[frameIndex],
-            _meshletDrawBuffers[frameIndex]);
+            // Dynamically resize buffers if needed
+            EnsureBufferCapacityForScene();
+            EnsureBufferCapacityForFrame(frameIndex);
+
+            // Write CPU scene data to staging buffer and record copy commands
+            // Use QFOT (Queue Family Ownership Transfer) for proper texture synchronization
+            _sceneBuilder.UploadToGPU(
+                _vulkanContext.VulkanApi,
+                transferCommandBuffer,
+                _vulkanContext.TransferQueueFamily,
+                _vulkanContext.GraphicsQueueFamily,
+                _frameUploadRing,
+                _sceneObjectBuffer,
+                _sceneMaterialBuffer,
+                _sceneMeshBuffer);
+            
+            _sceneBuilder.UploadInstanceAndDrawData(
+                _vulkanContext.VulkanApi,
+                transferCommandBuffer,
+                _frameUploadRing,
+                _instanceBuffers[frameIndex],
+                _meshletDrawBuffers[frameIndex]);
 
             // Phase 3.5: Upload lights
             _lightManagerImpl?.UploadToGPU(transferCommandBuffer, _frameUploadRing);
@@ -778,9 +854,9 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             MeshletVertexIndexBufferIndex = MeshletVertexIndexBuffer,
             MeshletTriangleIndexBufferIndex = MeshletTriangleIndexBuffer,
 
-            // Per-frame buffers (frame-indexed)
-            InstanceBufferIndex = InstanceBufferBase + frameIndex,
-            MeshletDrawBufferIndex = MeshletDrawBufferBase + frameIndex,
+            // Per-frame buffers — base indices; DB_BO in shaders adds FrameIndex
+            InstanceBufferIndex = InstanceBufferBase,
+            MeshletDrawBufferIndex = MeshletDrawBufferBase,
             MeshletDrawCount = _sceneBuilder.MeshletDrawCount
         };
 

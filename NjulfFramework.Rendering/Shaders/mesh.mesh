@@ -110,7 +110,9 @@ void main()
         vec3 pos; vec3 normal; vec2 uv;
         unpackVertex(globalVertexIndex, pos, normal, uv);
 
-        gl_MeshVerticesEXT[localIndex].gl_Position = mvp * vec4(pos, 1.0);
+        // Output clip space position: projection * view * model * pos
+        // Avoid pre-multiplying matrices to prevent double perspective divide
+        gl_MeshVerticesEXT[localIndex].gl_Position = pc.projection * pc.view * vec4(model * vec4(pos, 1.0));
         outPosition[localIndex] = vec3(model * vec4(pos, 1.0));
         outNormal[localIndex] = normalize(mat3(model) * normal);
         outTexCoord[localIndex] = uv;

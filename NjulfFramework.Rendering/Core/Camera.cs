@@ -147,12 +147,18 @@ namespace NjulfFramework.Rendering.Core
         {
             if (_isProjectionDirty)
             {
-                _cachedProjection = Matrix4x4.CreatePerspectiveFieldOfView(
+                var proj = Matrix4x4.CreatePerspectiveFieldOfView(
                     _fovY,
                     _aspectRatio,
                     NearPlane,
                     FarPlane
                 );
+                // Vulkan clip-space Y points down; flip the Y-axis to match
+                proj.M21 = -proj.M21;
+                proj.M22 = -proj.M22;
+                proj.M23 = -proj.M23;
+                proj.M24 = -proj.M24;
+                _cachedProjection = proj;
                 _isProjectionDirty = false;
             }
             return _cachedProjection;

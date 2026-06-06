@@ -113,7 +113,7 @@ public abstract class GameFramework
             }
 
             // Update camera aspect ratio to match window
-            if (Camera != null && Window != null)
+            if (Camera != null && Window != null && Window.Size.Y > 0)
             {
                 Camera.SetAspectRatio(Window.Size.X / (float)Window.Size.Y);
             }

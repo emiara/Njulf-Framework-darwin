@@ -614,6 +614,46 @@ public class SceneDataBuilder : ISceneDataBuilder
         _texturesNeedingAcquire.Clear();
     }
 
+    /// <summary>
+    /// Estimates the required size for the object buffer.
+    /// </summary>
+    public ulong EstimateObjectBufferSize()
+    {
+        return (ulong)_objectData.Count * GPUObjectData.GetSizeInBytes();
+    }
+
+    /// <summary>
+    /// Estimates the required size for the material buffer.
+    /// </summary>
+    public ulong EstimateMaterialBufferSize()
+    {
+        return (ulong)_materialData.Count * GPUMaterial.GetSizeInBytes();
+    }
+
+    /// <summary>
+    /// Estimates the required size for the mesh buffer.
+    /// </summary>
+    public ulong EstimateMeshBufferSize()
+    {
+        return (ulong)_meshData.Count * GPUMeshData.GetSizeInBytes();
+    }
+
+    /// <summary>
+    /// Estimates the required size for the instance buffer.
+    /// </summary>
+    public ulong EstimateInstanceBufferSize()
+    {
+        return (ulong)_instanceData.Count * GPUInstanceData.GetSizeInBytes();
+    }
+
+    /// <summary>
+    /// Estimates the required size for the meshlet draw buffer.
+    /// </summary>
+    public ulong EstimateMeshletDrawBufferSize()
+    {
+        return (ulong)_meshletDraws.Count * GPUMeshletDraw.GetSizeInBytes();
+    }
+
     public ulong GetTotalUploadSizeInBytes()
     {
         ulong size = 0;

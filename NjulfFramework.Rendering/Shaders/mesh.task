@@ -53,23 +53,10 @@ vec4 readVec4(uint baseUint) {
 // Instance is 80 bytes = 20 uints: model(0-15), materialIndex(16), meshletBaseOffset(17), meshletCount(18), pad(19)
 mat4 getInstanceModel(uint instanceIndex) {
     uint base = instanceIndex * 20u;
-    return mat4(
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 0u]),
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 1u]),
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 2u]),
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 3u]),
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 4u]),
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 5u]),
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 6u]),
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 7u]),
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 8u]),
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 9u]),
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 10u]),
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 11u]),
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 12u]),
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 13u]),
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 14u]),
-        uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + 15u]));
+    mat4 m;
+    for (int i = 0; i < 16; i++)
+        m[i / 4][i % 4] = uintBitsToFloat(DB_BO(pc.instanceBufferIndex).data[base + uint(i)]);
+    return m;
 }
 
 void main()

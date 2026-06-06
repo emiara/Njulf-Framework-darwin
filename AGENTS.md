@@ -1,75 +1,59 @@
 # AGENTS.md
 
-This file contains project-specific information discovered during analysis.
+## Build & Run
+- `dotnet build` / `dotnet run` (project: `NjulfFramework/`). No custom scripts.
+- Target: `net10.0`. All projects must stay on same TFM.
+- `AllowUnsafeBlocks` true in `NjulfFramework.Rendering` and `NjulfFramework.Assets` (Vulkan interop).
 
-## Project Overview
-- **Project Name**: NjulfFramework
-- **Type**: C# Framework for Graphics and Rendering
-- **Primary Focus**: Vulkan-based rendering, asset management, and input handling
+## Project Dependency Graph
+```
+NjulfFramework.Input  (leaf)       -- Silk.NET.Input only
+NjulfFramework.Core                 -- refs Input; defines interfaces, enums, GameFramework base
+NjulfFramework.Assets               -- refs Core; AllowUnsafeBlocks
+NjulfFramework.Rendering            -- refs Core, Assets; AllowUnsafeBlocks; Vulkan/VMA/StbImage
+NjulfFramework.Physics              -- standalone stub (BepuPhysics dep only)
+NjulfFramework.Tests                -- standalone stub; no test framework; Silk.NET version drift (2.22.0 vs 2.23.0)
+NjulfFramework (EXE)                -- refs Core, Assets, Input, Rendering; entry point Program.cs
+```
+**Do not add project references to Physics or Tests** until they are wired into the DI graph.
 
-## Key Components
+## DI Registration Pattern
+Each module registers services via `DependencyInjection/*ServiceCollectionExtensions.cs`:
+- `AddNjulfFrameworkCore()` — currently empty (placeholder)
+- `AddNjulfFrameworkInput()` — registers `IInputManager`
+- `AddNjulfFrameworkAssets()` — registers `AssimpImporter`, `MaterialConverter`, `MeshConverter`, `ModelProcessor`, `AssetCache`, `IAssetLoader`, `IContentManager`
+- `AddNjulfFrameworkRendering()` — registers `ICamera` (default at (0,0,5)), `VulkanRenderer` as `IRenderer` and `ISceneLoader`
 
-### 1. **Rendering System**
-- **VulkanRenderer.cs**: Core rendering engine using Vulkan API
-- **Pipeline**: Includes mesh, raster, and ray tracing passes
-- **Resource Management**: Descriptor heaps, texture management, and buffer handling
-- **Shaders**: Forward+, mesh, and task shaders for modern rendering techniques
+**Call order in `Program.cs`:** `AddNjulfFrameworkCore().AddNjulfFrameworkRendering().AddNjulfFrameworkAssets().AddNjulfFrameworkInput()`.
 
-### 2. **Asset System**
-- **AssetLoader.cs**: Handles loading and caching of assets
-- **AssimpImporter.cs**: Uses Assimp library for model import
-- **MaterialConverter.cs**: Converts materials for framework compatibility
-- **GLTF Support**: Integrated GLTF model loading and processing
+## Lifecycle (`GameFramework` base class)
+1. `ConfigureWindow()` → `WindowOptions.DefaultVulkan`
+2. `RegisterFrameworkServices(IServiceCollection)` — DI registration
+3. `Load()` — load assets (model path: `"vintage_video_camera_2k.gltf"`)
+4. `Update(float deltaTime)` — game logic + `_inputManager.Update()`
+5. `Draw()` — post-render custom drawing (currently empty in example)
+6. `Cleanup()` — `Renderer?.Dispose()`, `Window?.Dispose()`
 
-### 3. **Input System**
-- **InputManager.cs**: Manages input devices and actions
-- **KeyboardDevice.cs** and **MouseDevice.cs**: Device-specific implementations
-- **InputActionBuilder.cs**: Fluent API for defining input actions
+**InputManager** is obtained via reflection on `GameFramework._serviceProvider` (private field) because the base class doesn't expose the service provider publicly.
 
-### 4. **Core Architecture**
-- **FrameworkModel.cs**: Base model structure for the framework
-- **SceneDataBuilder.cs**: Builds scene data for rendering
-- **GPUData.cs**: Manages GPU-related data structures
+## Shaders
+- All GLSL 460, compiled at runtime via `glslc` (Google shader compiler): `vertex.vert`, `fragment.frag`, `forward_plus.frag`, `light_cull.comp`, `mesh.mesh`, `mesh.task`.
+- Shader source in `NjulfFramework.Rendering/Shaders/`, copied to output dir.
+- No SPIR-V pre-compilation; `glslc` must be on PATH.
 
-## Technical Details
+## Rendering Architecture
+- **VulkanRenderer.cs** (1368 lines) — bindless descriptors, mesh shaders (ExtMeshShader), Forward+ with tiled light culling, ray tracing.
+- **Render graph**: `RenderGraph` + `RenderGraphPass` + `RenderGraphContext`, composable passes.
+- **Bindless buffer indices** defined in `Resources/Descriptors/BindlessBufferIndices.cs`.
+- **Handle-based GPU resources**: `HandleGenerator`, `BufferHandle`, `TextureHandle`.
 
-### Vulkan Integration
-- Uses bindless descriptor heaps for efficient resource management
-- Implements tiled light culling for performance optimization
-- Supports dynamic mesh and raster pipelines
+## TODOs (from Notes.txt)
+1. Threaded scene loading: split `LoadModelIntoScene` into `BuildCpuPayload` (any thread) + `IntegratePayload` (render thread via `ConcurrentQueue`).
+2. Replace `DeviceWaitIdle` in `FinalizeAndUpdateMeshBuffers` with a frame-indexed deletion queue.
+3. Move mesh/index/meshlet buffers into bindless heap with update-after-bind (or double-buffer descriptor sets).
 
-### Asset Pipeline
-- Processes GLTF models with textures and materials
-- Includes texture loading and conversion utilities
-- Manages asset caching for performance
-
-### Input Handling
-- Supports keyboard and mouse input devices
-- Action-based input system with type safety
-- Binding system for flexible input configuration
-
-## Project-Specific Patterns
-
-1. **Handle-Based Resource Management**: Uses handle generators for GPU resources
-2. **Data-Driven Rendering**: Scene data is built dynamically for each frame
-3. **Modular Pipeline Design**: Render passes are composable and extensible
-4. **Cross-Platform Considerations**: Designed for Windows with Vulkan backend
-
-## Notable Files
-
-- `vintage_video_camera_2k.gltf`: Sample GLTF model included in project
-- `PBR_PLAN.md`: Physical Based Rendering implementation plan
-- `GLTF_INTEGRATION_PLAN.md`: GLTF integration strategy document
-
-## Build and Configuration
-
-- **Solution File**: `NjulfFramework.sln`
-- **Project Files**: Multiple CSProj files for modular structure
-- **Dependencies**: Vulkan SDK, Assimp library, and other graphics-related dependencies
-
-## Development Notes
-
-- The framework is actively developed with focus on Vulkan rendering
-- Includes experimental features like mesh shaders and ray tracing
-- Designed for game development and real-time graphics applications
-- Follows modern C# practices with async/await patterns where appropriate
+## Gotchas
+- **Tests project** uses Silk.NET 2.22.0 vs 2.23.0 everywhere else — update if adding tests.
+- **Physics/Tests are empty stubs** — `Class1.cs` with no real code.
+- Input manager needs explicit `Initialize(keyboard, mouse)` call (done in `GameFramework.OnWindowLoad()`).
+- Asset `.gltf`/`.bin`/texture files must exist at output (configured via `<CopyToOutputDirectory>` in csproj).
