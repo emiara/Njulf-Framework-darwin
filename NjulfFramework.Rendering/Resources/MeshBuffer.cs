@@ -3,7 +3,7 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
 using NjulfFramework.Rendering.Memory;
-using NjulfFramework.Rendering.RenderingData;
+using NjulfFramework.Rendering.Data;
 using NjulfFramework.Rendering.Resources.Handles;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.EXT;

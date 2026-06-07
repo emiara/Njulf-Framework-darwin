@@ -9,7 +9,7 @@ namespace NjulfFramework.Rendering.Data;
 ///     Per-instance data consumed by mesh/fragment shaders in GPU-driven rendering.
 ///     One entry per visible RenderObject. Indexed by the meshlet's InstanceIndex.
 /// </summary>
-[StructLayout(LayoutKind.Sequential)]
+[StructLayout(LayoutKind.Sequential, Pack = 16)]
 public struct GPUInstanceData
 {
     public Matrix4x4 Model;          // 64 bytes

@@ -32,6 +32,8 @@ public class SynchronizationManager : IDisposable
 
     public Fence[] InFlightFences { get; private set; } = null!;
 
+    public Fence[] TransferFences { get; private set; } = null!;
+
     public unsafe void Dispose()
     {
         foreach (var semaphore in ImageAvailableSemaphores)
@@ -47,6 +49,10 @@ public class SynchronizationManager : IDisposable
                 _vk.DestroySemaphore(_device, semaphore, null);
 
         foreach (var fence in InFlightFences)
+            if (fence.Handle != 0)
+                _vk.DestroyFence(_device, fence, null);
+
+        foreach (var fence in TransferFences)
             if (fence.Handle != 0)
                 _vk.DestroyFence(_device, fence, null);
     }

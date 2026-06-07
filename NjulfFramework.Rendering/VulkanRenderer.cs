@@ -240,6 +240,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     /// </summary>
     private void EnsureBufferCapacityForScene()
     {
+        if (_sceneBuilder == null || _bindlessHeap == null || _bufferManager == null) return;
         lock (_bufferResizeLock)
         {
             // Estimate required buffer sizes
@@ -279,6 +280,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     /// </summary>
     private void EnsureBufferCapacityForFrame(uint frameIndex)
     {
+        if (_sceneBuilder == null || _bindlessHeap == null || _bufferManager == null) return;
         lock (_bufferResizeLock)
         {
             // Estimate required buffer sizes
@@ -714,7 +716,7 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
     {
         if (_vulkanContext == null || _swapchainManager == null ||
             _commandBufferManager == null || _synchronizationManager == null ||
-            _meshPipeline == null || _meshManager == null)
+            _meshPipeline == null || _meshManager == null || _sceneBuilder == null)
             return;
 
         // Drain scene payload queue from CPU thread
@@ -740,6 +742,12 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
         // Wait for this frame's fence to complete
         vk.WaitForFences(device, 1, &inFlightFence, true, ulong.MaxValue);
         vk.ResetFences(device, 1, &inFlightFence);
+
+        // Wait for this frame-in-flight's previous transfer to finish before
+        // reusing its FrameUploadRing staging slot and transferFinishedSemaphore.
+        var transferFence = _synchronizationManager.TransferFences[frameIndex];
+        vk.WaitForFences(device, 1, &transferFence, true, ulong.MaxValue);
+        vk.ResetFences(device, 1, &transferFence);
 
         // Acquire next image - signals imageAvailableSemaphore when done
         uint imageIndex = 0;
@@ -1111,6 +1119,9 @@ public unsafe class VulkanRenderer : IRenderer, ISceneLoader
             SignalSemaphoreCount = 1,
             PSignalSemaphores = &transferFinishedSemaphore
         };
+
+        var frameIndex = _currentFrameIndex % MaxFramesInFlight;
+        var transferFence = _synchronizationManager!.TransferFences[frameIndex];
 
         var result = vk.QueueSubmit(transferQueue, 1, &submitInfo, default);
         if (result != Result.Success)

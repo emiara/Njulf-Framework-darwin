@@ -58,7 +58,7 @@ public class DynamicMeshPass : RenderGraphPass
                 StoreOp = AttachmentStoreOp.DontCare,
                 ClearValue = new ClearValue
                 {
-                    DepthStencil = new ClearDepthStencilValue(1.0f, 0)
+                    DepthStencil = new ClearDepthStencilValue(0.0f, 0)
                 }
             };
             pDepthAttachment = &depthAttachmentInfo;

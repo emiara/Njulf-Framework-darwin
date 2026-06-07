@@ -2,8 +2,8 @@
 
 using System.Runtime.InteropServices;
 using NjulfFramework.Core.Interfaces.Rendering;
+using NjulfFramework.Rendering.Data;
 using NjulfFramework.Rendering.Memory;
-using NjulfFramework.Rendering.RenderingData;
 using NjulfFramework.Rendering.Resources.Handles;
 using Silk.NET.Vulkan;
 using Buffer = Silk.NET.Vulkan.Buffer;
